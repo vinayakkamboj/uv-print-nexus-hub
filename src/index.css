@@ -73,4 +73,35 @@
   .card-shadow {
     @apply shadow-lg hover:shadow-xl transition-shadow duration-300;
   }
+
+  /* Animation Classes */
+  .fade-in {
+    @apply animate-[fadeIn_0.6s_ease-in-out];
+  }
+
+  .slide-up {
+    @apply animate-[slideUp_0.5s_ease-out];
+  }
+
+  .hover-lift {
+    @apply transition-transform duration-300 hover:translate-y-[-5px];
+  }
+
+  .hover-scale {
+    @apply transition-transform duration-300 hover:scale-105;
+  }
+
+  .hover-glow {
+    @apply transition-all duration-300 hover:shadow-lg hover:shadow-primary/20;
+  }
+}
+
+@keyframes fadeIn {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+@keyframes slideUp {
+  0% { transform: translateY(20px); opacity: 0; }
+  100% { transform: translateY(0); opacity: 1; }
 }

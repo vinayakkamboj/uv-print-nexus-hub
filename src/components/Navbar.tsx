@@ -26,25 +26,25 @@ export default function Navbar() {
   return (
     <header className="sticky top-0 z-50 bg-white shadow-md">
       <nav className="container-custom flex items-center justify-between py-4">
-        {/* Logo */}
-        <Link to="/" className="flex items-center">
+        {/* Logo - Made smaller */}
+        <Link to="/" className="flex items-center transition-transform duration-300 hover:scale-105">
           <img
             src="/logo.png"
             alt="Micro UV Printers"
-            className="h-8 w-auto"
+            className="h-6 w-auto"
           />
-          <span className="ml-2 text-lg font-bold text-primary hidden sm:block">
+          <span className="ml-2 text-sm font-bold text-primary hidden sm:block">
             Micro UV Printers
           </span>
         </Link>
 
-        {/* Desktop Navigation */}
+        {/* Desktop Navigation with animation */}
         <div className="hidden md:flex space-x-6">
           {navigation.map((item) => (
             <Link
               key={item.name}
               to={item.href}
-              className="text-gray-700 hover:text-primary transition-colors duration-200 font-medium"
+              className="text-gray-700 hover:text-primary transition-colors duration-200 font-medium relative after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-primary after:origin-center after:scale-x-0 after:transition-transform hover:after:scale-x-100"
             >
               {item.name}
             </Link>
@@ -56,17 +56,17 @@ export default function Navbar() {
           {user ? (
             <>
               <Link to="/dashboard">
-                <Button variant="outline" size="sm">Dashboard</Button>
+                <Button variant="outline" size="sm" className="transition-all duration-200 hover:scale-105">Dashboard</Button>
               </Link>
-              <Button size="sm" onClick={() => logout()}>Logout</Button>
+              <Button size="sm" onClick={() => logout()} className="transition-all duration-200 hover:scale-105">Logout</Button>
             </>
           ) : (
             <>
               <Link to="/login">
-                <Button variant="outline" size="sm">Log In</Button>
+                <Button variant="outline" size="sm" className="transition-all duration-200 hover:scale-105">Log In</Button>
               </Link>
               <Link to="/signup">
-                <Button size="sm">Sign Up</Button>
+                <Button size="sm" className="transition-all duration-200 hover:scale-105">Sign Up</Button>
               </Link>
             </>
           )}
@@ -74,7 +74,7 @@ export default function Navbar() {
 
         {/* Mobile Navigation Toggle */}
         <div className="md:hidden">
-          <Button variant="ghost" onClick={toggleMenu} className="-m-2.5 p-2.5">
+          <Button variant="ghost" onClick={toggleMenu} className="-m-2.5 p-2.5 transition-transform duration-200 hover:scale-110">
             <span className="sr-only">Open main menu</span>
             {mobileMenuOpen ? (
               <X className="h-6 w-6" aria-hidden="true" />
@@ -85,7 +85,7 @@ export default function Navbar() {
         </div>
       </nav>
 
-      {/* Mobile Menu */}
+      {/* Mobile Menu with animation */}
       <div
         className={cn(
           "fixed inset-0 z-40 md:hidden bg-white transform transition-transform ease-in-out duration-300",

@@ -9,13 +9,13 @@ export default function Footer() {
         <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-8">
           {/* Company Info */}
           <div className="col-span-1 md:col-span-1 lg:col-span-2">
-            <Link to="/" className="flex items-center mb-4">
+            <Link to="/" className="flex items-center mb-4 hover-scale">
               <img
                 src="/logo.png"
                 alt="Micro UV Printers"
-                className="h-10 w-auto"
+                className="h-8 w-auto"
               />
-              <span className="ml-2 text-xl font-bold">Micro UV Printers</span>
+              <span className="ml-2 text-lg font-bold">Micro UV Printers</span>
             </Link>
             <p className="mb-4 text-gray-300">
               20+ years of excellence in the printing & packaging industry,
@@ -35,7 +35,7 @@ export default function Footer() {
                 { name: "Testimonials", href: "/testimonials" },
                 { name: "FAQs", href: "/faqs" },
               ].map((link) => (
-                <li key={link.name}>
+                <li key={link.name} className="hover-lift">
                   <Link
                     to={link.href}
                     className="text-gray-300 hover:text-white transition-colors duration-200"
@@ -59,7 +59,7 @@ export default function Footer() {
                 "Medicine Boxes",
                 "Cartons & Boxes",
               ].map((service) => (
-                <li key={service} className="text-gray-300">
+                <li key={service} className="text-gray-300 hover-lift">
                   {service}
                 </li>
               ))}
@@ -70,20 +70,20 @@ export default function Footer() {
           <div className="col-span-1">
             <h3 className="text-lg font-semibold mb-4">Contact Us</h3>
             <ul className="space-y-3">
-              <li className="flex items-start">
-                <MapPin className="h-5 w-5 text-primary mr-2 mt-1 flex-shrink-0" />
+              <li className="flex items-start group">
+                <MapPin className="h-5 w-5 text-primary mr-2 mt-1 flex-shrink-0 group-hover:text-accent transition-colors duration-300" />
                 <span className="text-gray-300">
                   <strong>Work Office:</strong> 3 Onkar Road, Rajpur Road, Dehradun
                 </span>
               </li>
-              <li className="flex items-start">
-                <MapPin className="h-5 w-5 text-primary mr-2 mt-1 flex-shrink-0" />
+              <li className="flex items-start group">
+                <MapPin className="h-5 w-5 text-primary mr-2 mt-1 flex-shrink-0 group-hover:text-accent transition-colors duration-300" />
                 <span className="text-gray-300">
                   <strong>Registered Office:</strong> 179 Lunia Moholla, Near Clock Tower, Dehradun
                 </span>
               </li>
-              <li className="flex items-center">
-                <Phone className="h-5 w-5 text-primary mr-2 flex-shrink-0" />
+              <li className="flex items-center group">
+                <Phone className="h-5 w-5 text-primary mr-2 flex-shrink-0 group-hover:text-accent transition-colors duration-300" />
                 <a
                   href="tel:+919876543210"
                   className="text-gray-300 hover:text-white transition-colors duration-200"
@@ -91,8 +91,8 @@ export default function Footer() {
                   +91-9876543210
                 </a>
               </li>
-              <li className="flex items-center">
-                <Mail className="h-5 w-5 text-primary mr-2 flex-shrink-0" />
+              <li className="flex items-center group">
+                <Mail className="h-5 w-5 text-primary mr-2 flex-shrink-0 group-hover:text-accent transition-colors duration-300" />
                 <a
                   href="mailto:contact@microuvprinters.in"
                   className="text-gray-300 hover:text-white transition-colors duration-200"
@@ -111,7 +111,7 @@ export default function Footer() {
               href="https://instagram.com/microuvprinters"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-gray-300 hover:text-primary transition-colors duration-200"
+              className="text-gray-300 hover:text-primary transition-colors duration-200 hover-scale"
             >
               <Instagram className="h-6 w-6" />
             </a>
@@ -119,7 +119,7 @@ export default function Footer() {
               href="https://linkedin.com/company/microuvprinters"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-gray-300 hover:text-primary transition-colors duration-200"
+              className="text-gray-300 hover:text-primary transition-colors duration-200 hover-scale"
             >
               <Linkedin className="h-6 w-6" />
             </a>
@@ -127,7 +127,7 @@ export default function Footer() {
               href="https://wa.me/919876543210"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-gray-300 hover:text-primary transition-colors duration-200"
+              className="text-gray-300 hover:text-primary transition-colors duration-200 hover-scale"
             >
               <MessageSquare className="h-6 w-6" />
             </a>
