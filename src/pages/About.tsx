@@ -58,6 +58,10 @@ export default function About() {
               <h3 className="text-lg font-medium text-primary">Logistics</h3>
               <p className="text-gray-700">Weather-resistant labels, shipping documents, and tracking solutions.</p>
             </div>
+            <div>
+              <h3 className="text-lg font-medium text-primary">And Many More</h3>
+              <p className="text-gray-700">We cater to diverse industries with customized printing and packaging solutions.</p>
+            </div>
           </div>
         </div>
       </div>
