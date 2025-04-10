@@ -83,8 +83,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const login = async (email: string, password: string) => {
-    return signInWithEmailAndPassword(auth, email, password);
+  // Fixed login function to return void to match the interface
+  const login = async (email: string, password: string): Promise<void> => {
+    await signInWithEmailAndPassword(auth, email, password);
+    return;
   };
 
   const logout = async () => {
