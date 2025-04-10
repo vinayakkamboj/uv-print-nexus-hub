@@ -24,7 +24,7 @@ export default function Index() {
                 </Button>
               </Link>
               <Link to="/portfolio">
-                <Button variant="outline" className="border-white text-white hover:bg-white/10">
+                <Button className="bg-white text-primary hover:bg-gray-100 transition-colors">
                   View Portfolio
                 </Button>
               </Link>

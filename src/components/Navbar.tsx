@@ -33,7 +33,7 @@ export default function Navbar() {
             alt="Micro UV Printers"
             className="h-6 w-auto"
           />
-          <span className="ml-2 text-sm font-bold text-primary hidden sm:block">
+          <span className="ml-2 text-lg font-bold text-primary hidden sm:block">
             Micro UV Printers
           </span>
         </Link>
