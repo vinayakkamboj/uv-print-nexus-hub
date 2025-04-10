@@ -1,7 +1,7 @@
 
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Printer, Package, Truck, CheckCircle } from "lucide-react";
+import { ArrowRight, Printer, Package, Truck, CheckCircle, Building } from "lucide-react";
 
 export default function Index() {
   return (
@@ -71,6 +71,11 @@ export default function Index() {
                 name: "Logistics",
                 description: "High-quality shipping labels, packaging materials, and tracking solutions",
                 icon: <CheckCircle className="h-10 w-10 text-primary" />
+              },
+              {
+                name: "And Many More",
+                description: "We cater to diverse industries with customized printing and packaging solutions",
+                icon: <Building className="h-10 w-10 text-primary" />
               }
             ].map((industry, index) => (
               <div 

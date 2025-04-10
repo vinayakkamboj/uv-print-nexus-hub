@@ -31,15 +31,15 @@ export default function Navbar() {
           <img
             src="/logo.png"
             alt="Micro UV Printers"
-            className="h-10 w-auto"
+            className="h-8 w-auto"
           />
-          <span className="ml-2 text-xl font-bold text-primary hidden sm:block">
+          <span className="ml-2 text-lg font-bold text-primary hidden sm:block">
             Micro UV Printers
           </span>
         </Link>
 
         {/* Desktop Navigation */}
-        <div className="hidden md:flex space-x-8">
+        <div className="hidden md:flex space-x-6">
           {navigation.map((item) => (
             <Link
               key={item.name}
@@ -52,21 +52,21 @@ export default function Navbar() {
         </div>
 
         {/* Auth Buttons */}
-        <div className="hidden md:flex items-center space-x-4">
+        <div className="hidden md:flex items-center space-x-3">
           {user ? (
             <>
               <Link to="/dashboard">
-                <Button variant="outline">Dashboard</Button>
+                <Button variant="outline" size="sm">Dashboard</Button>
               </Link>
-              <Button onClick={() => logout()}>Logout</Button>
+              <Button size="sm" onClick={() => logout()}>Logout</Button>
             </>
           ) : (
             <>
               <Link to="/login">
-                <Button variant="outline">Log In</Button>
+                <Button variant="outline" size="sm">Log In</Button>
               </Link>
               <Link to="/signup">
-                <Button>Sign Up</Button>
+                <Button size="sm">Sign Up</Button>
               </Link>
             </>
           )}
