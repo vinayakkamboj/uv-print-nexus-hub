@@ -1,14 +1,220 @@
-// Update this page (the content is just a fallback if you fail to update the page)
 
-const Index = () => {
+import { Link } from "react-router-dom";
+import { Button } from "@/components/ui/button";
+import { ArrowRight, Printer, Package, Truck, CheckCircle } from "lucide-react";
+
+export default function Index() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100">
-      <div className="text-center">
-        <h1 className="text-4xl font-bold mb-4">Welcome to Your Blank App</h1>
-        <p className="text-xl text-gray-600">Start building your amazing project here!</p>
-      </div>
+    <div className="animate-fade-in">
+      {/* Hero Section */}
+      <section className="relative bg-gradient-to-b from-primary/90 to-secondary/90 text-white">
+        <div className="container-custom section-padding grid md:grid-cols-2 gap-8 items-center">
+          <div className="order-2 md:order-1">
+            <h1 className="text-4xl lg:text-5xl font-bold mb-4">
+              20+ Years of Excellence in UV Printing
+            </h1>
+            <p className="text-lg mb-8">
+              Trusted B2B printing & packaging solutions for pharma, automobile, manufacturing, 
+              and logistics industries across India.
+            </p>
+            <div className="flex flex-wrap gap-4">
+              <Link to="/order">
+                <Button className="bg-white text-primary hover:bg-gray-100 transition-colors">
+                  Order Now <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
+              </Link>
+              <Link to="/portfolio">
+                <Button variant="outline" className="border-white text-white hover:bg-white/10">
+                  View Portfolio
+                </Button>
+              </Link>
+            </div>
+          </div>
+          <div className="order-1 md:order-2 flex justify-center">
+            <img 
+              src="/hero-image.jpg" 
+              alt="Micro UV Printers factory" 
+              className="rounded-lg shadow-lg max-h-[400px] object-cover"
+            />
+          </div>
+        </div>
+      </section>
+
+      {/* Industries Served */}
+      <section className="bg-gray-50 section-padding">
+        <div className="container-custom">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl font-bold mb-3">Industries We Serve</h2>
+            <p className="text-gray-600 max-w-2xl mx-auto">
+              Providing specialized printing and packaging solutions across diverse sectors
+            </p>
+          </div>
+          
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            {[
+              {
+                name: "Pharmaceutical",
+                description: "Accurate medicine boxes, labels, and packaging that meet regulatory standards",
+                icon: <Package className="h-10 w-10 text-primary" />
+              },
+              {
+                name: "Automobile",
+                description: "Durable labels, manuals, and packaging solutions for automotive components",
+                icon: <Truck className="h-10 w-10 text-primary" />
+              },
+              {
+                name: "Manufacturing",
+                description: "Custom packaging and labeling solutions for industrial products",
+                icon: <Printer className="h-10 w-10 text-primary" />
+              },
+              {
+                name: "Logistics",
+                description: "High-quality shipping labels, packaging materials, and tracking solutions",
+                icon: <CheckCircle className="h-10 w-10 text-primary" />
+              }
+            ].map((industry, index) => (
+              <div 
+                key={index}
+                className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-shadow duration-300"
+              >
+                <div className="mb-4">{industry.icon}</div>
+                <h3 className="text-xl font-semibold mb-2">{industry.name}</h3>
+                <p className="text-gray-600">{industry.description}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Products Grid */}
+      <section className="section-padding">
+        <div className="container-custom">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl font-bold mb-3">Our Products</h2>
+            <p className="text-gray-600 max-w-2xl mx-auto">
+              High-quality printing and packaging solutions for every business need
+            </p>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {[
+              {
+                name: "UV Printed Stickers",
+                image: "/stickers.jpg",
+                description: "Vibrant, durable stickers that resist fading and water damage"
+              },
+              {
+                name: "Custom Tags",
+                image: "/tags.jpg",
+                description: "Branded tags for product identification and information"
+              },
+              {
+                name: "Medicine Boxes",
+                image: "/medicine-boxes.jpg",
+                description: "Precisely printed packaging for pharmaceutical products"
+              },
+              {
+                name: "Packaging Cartons",
+                image: "/cartons.jpg",
+                description: "Sturdy, customized cartons for product protection and branding"
+              }
+            ].map((product, index) => (
+              <div key={index} className="group">
+                <div className="overflow-hidden rounded-lg shadow-md group-hover:shadow-lg transition-shadow duration-300">
+                  <img 
+                    src={product.image} 
+                    alt={product.name}
+                    className="w-full h-52 object-cover transition-transform duration-300 group-hover:scale-105" 
+                  />
+                  <div className="p-4">
+                    <h3 className="text-xl font-semibold mb-2">{product.name}</h3>
+                    <p className="text-gray-600 mb-4">{product.description}</p>
+                    <Link to="/order" className="text-primary font-medium flex items-center">
+                      Order Now <ArrowRight className="ml-1 h-4 w-4" />
+                    </Link>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Why Choose Us */}
+      <section className="bg-primary text-white section-padding">
+        <div className="container-custom">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl font-bold mb-3">Why Choose Micro UV Printers</h2>
+            <p className="max-w-2xl mx-auto opacity-90">
+              We combine decades of experience with cutting-edge technology to deliver exceptional results
+            </p>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            {[
+              {
+                title: "20+ Years Experience",
+                description: "Decades of expertise in the printing and packaging industry"
+              },
+              {
+                title: "State-of-the-Art Technology",
+                description: "Advanced UV printing equipment for superior quality outputs"
+              },
+              {
+                title: "Customized Solutions",
+                description: "Tailored printing and packaging solutions for every client"
+              },
+              {
+                title: "Timely Delivery",
+                description: "Reliable schedules and prompt deliveries across India"
+              },
+              {
+                title: "Quality Assurance",
+                description: "Stringent quality checks for every product we deliver"
+              },
+              {
+                title: "Customer Support",
+                description: "Dedicated team providing excellent pre and post-sales support"
+              }
+            ].map((item, index) => (
+              <div key={index} className="bg-white/10 p-6 rounded-lg">
+                <h3 className="text-xl font-semibold mb-3">{item.title}</h3>
+                <p className="opacity-90">{item.description}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* CTA Section */}
+      <section className="section-padding">
+        <div className="container-custom bg-gray-100 rounded-2xl p-8 lg:p-12">
+          <div className="grid md:grid-cols-2 gap-8 items-center">
+            <div>
+              <h2 className="text-3xl font-bold mb-4">Ready to Start Your Project?</h2>
+              <p className="text-gray-600 mb-6">
+                Contact us today to discuss your printing and packaging requirements.
+                Our team is ready to help you bring your vision to life.
+              </p>
+              <div className="flex flex-wrap gap-4">
+                <Link to="/contact">
+                  <Button>Contact Us</Button>
+                </Link>
+                <Link to="/order">
+                  <Button variant="outline">Place an Order</Button>
+                </Link>
+              </div>
+            </div>
+            <div className="hidden md:block">
+              <img 
+                src="/contact-image.jpg" 
+                alt="Contact Micro UV Printers" 
+                className="rounded-lg shadow-md"
+              />
+            </div>
+          </div>
+        </div>
+      </section>
     </div>
   );
-};
-
-export default Index;
+}
