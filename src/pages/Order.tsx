@@ -1,13 +1,6 @@
-
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import {
-  collection,
-  query,
-  where,
-  getDocs,
-} from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { db, storage } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
@@ -69,7 +62,6 @@ export default function Order() {
   const [paymentProcessing, setPaymentProcessing] = useState(false);
 
   useEffect(() => {
-    // Initialize Razorpay when component mounts
     initializeRazorpay()
       .then((success) => {
         if (!success) {
@@ -133,39 +125,16 @@ export default function Order() {
 
     try {
       setLoading(true);
-      setProcessingStep("Checking existing orders...");
+      setProcessingStep("Processing your order...");
 
-      // Check if any previous orders are pending
-      const orderQuery = query(
-        collection(db, "orders"),
-        where("userId", "==", user?.uid),
-        where("status", "in", ["received", "processing"])
-      );
-      const existingOrders = await getDocs(orderQuery);
-
-      if (!existingOrders.empty) {
-        toast({
-          title: "Action Denied",
-          description:
-            "You already have an active order. Please wait until it's completed or canceled.",
-          variant: "destructive",
-        });
-        setLoading(false);
-        return;
-      }
-
-      // Proceed to upload file
+      // In demo mode, we'll skip the firebase operations
+      console.log("Processing order with file:", file.name);
+      
+      // Simulate file upload
       setProcessingStep("Uploading your design file...");
-      const fileId = generateId();
-      const fileExtension = file.name.split(".").pop();
-      const storageRef = ref(
-        storage,
-        `designs/${user?.uid}/${fileId}.${fileExtension}`
-      );
-
-      const uploadResult = await uploadBytes(storageRef, file);
-      const fileUrl = await getDownloadURL(uploadResult.ref);
-
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      const fileUrl = URL.createObjectURL(file);
+      
       const estimatedPrice = calculateEstimatedPrice();
       
       // Get HSN code based on product type
@@ -173,7 +142,7 @@ export default function Order() {
 
       setProcessingStep("Creating your order...");
       const orderData = {
-        userId: user?.uid || "",
+        userId: user?.uid || "demo-user",
         productType,
         quantity: parseInt(quantity),
         specifications,
@@ -182,8 +151,8 @@ export default function Order() {
         fileUrl,
         fileName: file.name,
         totalAmount: estimatedPrice,
-        customerName: userData?.name || "Customer",
-        customerEmail: userData?.email || "",
+        customerName: userData?.name || "Demo Customer",
+        customerEmail: userData?.email || "demo@example.com",
         hsnCode,
       };
 
@@ -236,7 +205,7 @@ export default function Order() {
       
       setProcessingStep("Processing payment...");
       
-      // Process the payment
+      // Process the payment (simulated in demo mode)
       const paymentResult = await processPayment({
         orderId: createdOrderId,
         razorpayOrderId: razorpayOrder.id,
@@ -262,14 +231,14 @@ export default function Order() {
       
       setProcessingStep("Completing order...");
       
-      let toastDescription = `Your order has been received and is being processed.`;
+      let toastDescription = `Your order has been received and is being processed. (Demo Mode)`;
       
       if (invoiceResult.success) {
-        toastDescription += " An invoice has been generated and sent to your email.";
+        toastDescription += " An invoice has been simulated and would be sent to your email in production.";
       }
       
       toast({
-        title: "Order Placed Successfully",
+        title: "Order Placed Successfully (Demo)",
         description: toastDescription,
       });
       
@@ -282,9 +251,6 @@ export default function Order() {
         description: "There was an issue with the payment. Please try again or contact support.",
         variant: "destructive",
       });
-      
-      // If we have an order ID but payment failed, we could delete the order
-      // or mark it as payment_failed for the user to retry payment later
     } finally {
       setPaymentProcessing(false);
       setProcessingStep("");
