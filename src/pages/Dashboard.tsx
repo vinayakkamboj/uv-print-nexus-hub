@@ -107,7 +107,7 @@ export default function Dashboard() {
   return (
     <div className="container-custom py-12">
       <h1 className="text-3xl font-bold mb-2">Dashboard</h1>
-      <p className="text-gray-600 mb-8">Welcome back, {userData?.name}</p>
+      <p className="text-gray-600 mb-8">Welcome back, {userData?.name} Ji</p>
 
       {/* Quick Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">

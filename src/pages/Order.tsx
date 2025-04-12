@@ -1,16 +1,35 @@
-
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import {
+  collection,
+  addDoc,
+  serverTimestamp,
+  query,
+  where,
+  getDocs,
+} from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { db, storage } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { generateId, isValidGSTIN } from "@/lib/utils";
 import { AlertCircle, Upload } from "lucide-react";
@@ -27,8 +46,7 @@ export default function Order() {
   const { user, userData } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
-  
-  // Form state
+
   const [productType, setProductType] = useState("");
   const [quantity, setQuantity] = useState("");
   const [specifications, setSpecifications] = useState("");
@@ -36,18 +54,15 @@ export default function Order() {
   const [gstNumber, setGstNumber] = useState(userData?.gstNumber || "");
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
-  
-  // Handle file selection
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       setFile(e.target.files[0]);
     }
   };
-  
-  // Calculate estimated price (simplified for example)
+
   const calculateEstimatedPrice = () => {
     if (!productType || !quantity) return 0;
-    
     const basePrice = {
       sticker: 500,
       tag: 800,
@@ -55,21 +70,16 @@ export default function Order() {
       medicine_box: 2000,
       custom: 3000,
     }[productType] || 0;
-    
     const qty = parseInt(quantity) || 0;
-    
-    // Simple calculation - real implementation would be more complex
     if (qty <= 100) return basePrice;
     if (qty <= 500) return basePrice * 1.5;
     if (qty <= 1000) return basePrice * 2;
     return basePrice * 3;
   };
-  
-  // Handle form submission
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // Validation
+
     if (!productType || !quantity || !deliveryAddress) {
       toast({
         title: "Error",
@@ -78,7 +88,7 @@ export default function Order() {
       });
       return;
     }
-    
+
     if (gstNumber && !isValidGSTIN(gstNumber)) {
       toast({
         title: "Error",
@@ -87,7 +97,7 @@ export default function Order() {
       });
       return;
     }
-    
+
     if (!file) {
       toast({
         title: "Error",
@@ -96,20 +106,42 @@ export default function Order() {
       });
       return;
     }
-    
+
     try {
       setLoading(true);
-      
-      // Upload file to Firebase Storage
+
+      // 🔎 Check if any previous orders are pending
+      const orderQuery = query(
+        collection(db, "orders"),
+        where("userId", "==", user?.uid),
+        where("status", "in", ["received", "processing"])
+      );
+      const existingOrders = await getDocs(orderQuery);
+
+      if (!existingOrders.empty) {
+        toast({
+          title: "Action Denied",
+          description:
+            "You already have an active order. Please wait until it's completed or canceled.",
+          variant: "destructive",
+        });
+        setLoading(false);
+        return;
+      }
+
+      // Proceed to upload file and place order
       const fileId = generateId();
-      const fileExtension = file.name.split('.').pop();
-      const storageRef = ref(storage, `designs/${user?.uid}/${fileId}.${fileExtension}`);
-      
+      const fileExtension = file.name.split(".").pop();
+      const storageRef = ref(
+        storage,
+        `designs/${user?.uid}/${fileId}.${fileExtension}`
+      );
+
       const uploadResult = await uploadBytes(storageRef, file);
       const fileUrl = await getDownloadURL(uploadResult.ref);
-      
-      // Create order in Firestore
+
       const estimatedPrice = calculateEstimatedPrice();
+
       const orderData = {
         userId: user?.uid,
         productType,
@@ -123,27 +155,28 @@ export default function Order() {
         totalAmount: estimatedPrice,
         timestamp: serverTimestamp(),
       };
-      
+
       const orderRef = await addDoc(collection(db, "orders"), orderData);
-      
+
       toast({
         title: "Order Placed Successfully",
         description: `Your order #${orderRef.id} has been received and is being processed.`,
       });
-      
+
       navigate("/dashboard");
     } catch (error) {
       console.error("Error placing order:", error);
       toast({
         title: "Error",
-        description: "There was a problem submitting your order. Please try again.",
+        description:
+          "There was a problem submitting your order. Please try again.",
         variant: "destructive",
       });
     } finally {
       setLoading(false);
     }
   };
-  
+
   const estimatedPrice = calculateEstimatedPrice();
   
   return (
@@ -153,7 +186,7 @@ export default function Order() {
         <p className="text-gray-600 mb-8">
           Fill in the details below to submit your printing request.
         </p>
-        
+
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="md:col-span-2">
             <Card>
@@ -167,8 +200,8 @@ export default function Order() {
                 <CardContent className="space-y-6">
                   <div className="space-y-2">
                     <Label htmlFor="productType">Product Type</Label>
-                    <Select 
-                      value={productType} 
+                    <Select
+                      value={productType}
                       onValueChange={setProductType}
                       required
                     >
@@ -184,7 +217,7 @@ export default function Order() {
                       </SelectContent>
                     </Select>
                   </div>
-                  
+
                   <div className="space-y-2">
                     <Label htmlFor="quantity">Quantity</Label>
                     <Input
@@ -197,7 +230,7 @@ export default function Order() {
                       required
                     />
                   </div>
-                  
+
                   <div className="space-y-2">
                     <Label htmlFor="specifications">Specifications</Label>
                     <Textarea
@@ -208,7 +241,7 @@ export default function Order() {
                       rows={4}
                     />
                   </div>
-                  
+
                   <div className="space-y-2">
                     <Label htmlFor="file">Upload Design File</Label>
                     <div className="flex items-center justify-center border-2 border-dashed border-gray-300 rounded-lg p-6">
@@ -233,7 +266,7 @@ export default function Order() {
                       </label>
                     </div>
                   </div>
-                  
+
                   <div className="space-y-2">
                     <Label htmlFor="gstNumber">GST Number</Label>
                     <Input
@@ -243,7 +276,7 @@ export default function Order() {
                       onChange={(e) => setGstNumber(e.target.value)}
                     />
                   </div>
-                  
+
                   <div className="space-y-2">
                     <Label htmlFor="deliveryAddress">Delivery Address</Label>
                     <Textarea
@@ -267,7 +300,7 @@ export default function Order() {
               </form>
             </Card>
           </div>
-          
+
           <div>
             <Card>
               <CardHeader>
@@ -282,12 +315,12 @@ export default function Order() {
                       : "Not selected"}
                   </div>
                 </div>
-                
+
                 <div>
                   <div className="text-sm text-gray-500">Quantity</div>
                   <div className="font-medium">{quantity || "0"}</div>
                 </div>
-                
+
                 <div className="pt-4 border-t">
                   <div className="text-sm text-gray-500">Estimated Price</div>
                   <div className="text-xl font-bold text-primary">
@@ -297,12 +330,14 @@ export default function Order() {
                     *Final price may vary based on specific requirements
                   </div>
                 </div>
-                
+
                 <div className="bg-blue-50 p-4 rounded-lg mt-4">
                   <div className="flex">
                     <AlertCircle className="h-5 w-5 text-blue-500 mr-2 flex-shrink-0" />
                     <div className="text-sm text-blue-700">
-                      After placing your order, our team will review it and contact you for any clarifications. A detailed quotation will be provided for your approval.
+                      After placing your order, our team will review it and contact you for
+                      any clarifications. A detailed quotation will be provided for your
+                      approval.
                     </div>
                   </div>
                 </div>

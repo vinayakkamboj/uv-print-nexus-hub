@@ -112,7 +112,7 @@ export default function Signup() {
             <Label htmlFor="name">Full Name</Label>
             <Input
               id="name"
-              placeholder="John Doe"
+              placeholder="Your Name"
               value={name}
               onChange={(e) => setName(e.target.value)}
               required
@@ -124,7 +124,7 @@ export default function Signup() {
             <Input
               id="email"
               type="email"
-              placeholder="you@example.com"
+              placeholder="Enter your email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
@@ -135,7 +135,7 @@ export default function Signup() {
             <Label htmlFor="phone">Phone Number</Label>
             <Input
               id="phone"
-              placeholder="+91 98765 43210"
+              placeholder="Enter your phone number"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               required
@@ -146,7 +146,7 @@ export default function Signup() {
             <Label htmlFor="gstNumber">GST Number (Optional)</Label>
             <Input
               id="gstNumber"
-              placeholder="05ABCDE1234F1Z1"
+              placeholder="Enter your GST number"
               value={gstNumber}
               onChange={(e) => setGstNumber(e.target.value)}
             />

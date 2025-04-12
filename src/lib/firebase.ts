@@ -7,17 +7,18 @@ import { getAnalytics, isSupported } from "firebase/analytics";
 
 const firebaseConfig = {
   // IMPORTANT: Replace with your Firebase configuration
-  apiKey: "YOUR_API_KEY",
-  authDomain: "microuvprinters.firebaseapp.com",
-  projectId: "microuvprinters",
-  storageBucket: "microuvprinters.appspot.com",
-  messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-  appId: "YOUR_APP_ID",
-  measurementId: "YOUR_MEASUREMENT_ID"
+  apiKey: "AIzaSyAz9n6m6nFCH3zrhcCa7egABB6hX9RxicA",
+  authDomain: "micro-uv-printers.firebaseapp.com",
+  projectId: "micro-uv-printers",
+  storageBucket: "micro-uv-printers.firebasestorage.app",
+  messagingSenderId: "999296557493",
+  appId: "1:999296557493:web:271981a450c1692143b9fc",
+  measurementId: "G-YPYH12FLLM"
 };
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
+const analytics = getAnalytics(app);
 
 // Initialize Firebase services
 export const auth = getAuth(app);

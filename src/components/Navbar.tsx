@@ -5,6 +5,9 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Menu, X } from "lucide-react";
+import Logo from '../assets/logo.png'; // Adjust the path as necessary
+import { ArrowRight, Printer, Package, Truck, CheckCircle, Building } from "lucide-react";
+
 
 const navigation = [
   { name: "Home", href: "/" },
@@ -29,7 +32,7 @@ export default function Navbar() {
         {/* Logo - Made smaller */}
         <Link to="/" className="flex items-center transition-transform duration-300 hover:scale-105">
           <img
-            src="/logo.png"
+            src={Logo}
             alt="Micro UV Printers"
             className="h-6 w-auto"
           />

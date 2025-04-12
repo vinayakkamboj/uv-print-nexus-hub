@@ -1,17 +1,29 @@
-
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Printer, Package, Truck, CheckCircle, Building } from "lucide-react";
+import { ArrowRight, Printer, Package, Truck, CheckCircle, Building, BookOpen, School } from "lucide-react";
+import printerImg from '../assets/factoryprinting.jpeg';
+import uvPrinting from '../assets/uvprinting.jpg';
+import tags from '../assets/tags.jpg';
+import medicineBoxes from '../assets/medicinebox.jpg';
+import digital from '../assets/digital.jpg';
+import { motion } from "framer-motion";
+import { useEffect } from "react";
 
 export default function Index() {
   return (
     <div className="animate-fade-in">
+
       {/* Hero Section */}
       <section className="relative bg-gradient-to-b from-primary/90 to-secondary/90 text-white">
         <div className="container-custom section-padding grid md:grid-cols-2 gap-8 items-center">
-          <div className="order-2 md:order-1">
+          <motion.div
+            className="order-2 md:order-1"
+            initial={{ opacity: 0, x: -40 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.8 }}
+          >
             <h1 className="text-4xl lg:text-5xl font-bold mb-4">
-              20+ Years of Excellence in UV Printing
+              30+ Years of Excellence in Printing Industry
             </h1>
             <p className="text-lg mb-8">
               Trusted B2B printing & packaging solutions for pharma, automobile, manufacturing, 
@@ -29,14 +41,19 @@ export default function Index() {
                 </Button>
               </Link>
             </div>
-          </div>
-          <div className="order-1 md:order-2 flex justify-center">
+          </motion.div>
+          <motion.div
+            className="order-1 md:order-2 flex justify-center"
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.8 }}
+          >
             <img 
-              src="/hero-image.jpg" 
+              src={printerImg}
               alt="Micro UV Printers factory" 
               className="rounded-lg shadow-lg max-h-[400px] object-cover"
             />
-          </div>
+          </motion.div>
         </div>
       </section>
 
@@ -73,19 +90,33 @@ export default function Index() {
                 icon: <CheckCircle className="h-10 w-10 text-primary" />
               },
               {
+                name: "Publishing & Magazines",
+                description: "Customized magazine prints, covers, and layouts for mass distribution",
+                icon: <BookOpen className="h-10 w-10 text-primary" />
+              },
+              {
+                name: "Education & Schools",
+                description: "Educational materials, labels, and packaging for schools and universities",
+                icon: <School className="h-10 w-10 text-primary" />
+              },
+              {
                 name: "And Many More",
                 description: "We cater to diverse industries with customized printing and packaging solutions",
                 icon: <Building className="h-10 w-10 text-primary" />
               }
             ].map((industry, index) => (
-              <div 
+              <motion.div 
                 key={index}
                 className="bg-white p-6 rounded-lg shadow-md hover:shadow-lg transition-shadow duration-300"
+                initial={{ opacity: 0, y: 30 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: index * 0.1, duration: 0.5 }}
               >
                 <div className="mb-4">{industry.icon}</div>
                 <h3 className="text-xl font-semibold mb-2">{industry.name}</h3>
                 <p className="text-gray-600">{industry.description}</p>
-              </div>
+              </motion.div>
             ))}
           </div>
         </div>
@@ -95,7 +126,7 @@ export default function Index() {
       <section className="section-padding">
         <div className="container-custom">
           <div className="text-center mb-12">
-            <h2 className="text-3xl font-bold mb-3">Our Products</h2>
+            <h2 className="text-3xl font-bold mb-3">Our Products & Services</h2>
             <p className="text-gray-600 max-w-2xl mx-auto">
               High-quality printing and packaging solutions for every business need
             </p>
@@ -104,27 +135,34 @@ export default function Index() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             {[
               {
-                name: "UV Printed Stickers",
-                image: "/stickers.jpg",
-                description: "Vibrant, durable stickers that resist fading and water damage"
+                name: "UV Printing Services",
+                image: uvPrinting,
+                description: "High-quality UV printing for vibrant colors and durability"
               },
               {
                 name: "Custom Tags",
-                image: "/tags.jpg",
+                image: tags,
                 description: "Branded tags for product identification and information"
               },
               {
                 name: "Medicine Boxes",
-                image: "/medicine-boxes.jpg",
+                image: medicineBoxes,
                 description: "Precisely printed packaging for pharmaceutical products"
               },
               {
-                name: "Packaging Cartons",
-                image: "/cartons.jpg",
-                description: "Sturdy, customized cartons for product protection and branding"
+                name: "Digital & Offset Printing",
+                image: digital,
+                description: "Versatile printing solutions for all your business needs"
               }
             ].map((product, index) => (
-              <div key={index} className="group">
+              <motion.div 
+                key={index} 
+                className="group"
+                initial={{ opacity: 0, y: 30 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: index * 0.1, duration: 0.5 }}
+              >
                 <div className="overflow-hidden rounded-lg shadow-md group-hover:shadow-lg transition-shadow duration-300">
                   <img 
                     src={product.image} 
@@ -139,7 +177,7 @@ export default function Index() {
                     </Link>
                   </div>
                 </div>
-              </div>
+              </motion.div>
             ))}
           </div>
         </div>
@@ -158,7 +196,7 @@ export default function Index() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {[
               {
-                title: "20+ Years Experience",
+                title: "30+ Years Experience",
                 description: "Decades of expertise in the printing and packaging industry"
               },
               {
@@ -182,10 +220,17 @@ export default function Index() {
                 description: "Dedicated team providing excellent pre and post-sales support"
               }
             ].map((item, index) => (
-              <div key={index} className="bg-white/10 p-6 rounded-lg">
+              <motion.div 
+                key={index} 
+                className="bg-white/10 p-6 rounded-lg"
+                initial={{ opacity: 0, y: 30 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: index * 0.1, duration: 0.5 }}
+              >
                 <h3 className="text-xl font-semibold mb-3">{item.title}</h3>
                 <p className="opacity-90">{item.description}</p>
-              </div>
+              </motion.div>
             ))}
           </div>
         </div>
@@ -193,7 +238,13 @@ export default function Index() {
 
       {/* CTA Section */}
       <section className="section-padding">
-        <div className="container-custom bg-gray-100 rounded-2xl p-8 lg:p-12">
+        <motion.div
+          className="container-custom bg-gray-100 rounded-2xl p-8 lg:p-12"
+          initial={{ opacity: 0, scale: 0.95 }}
+          whileInView={{ opacity: 1, scale: 1 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.6 }}
+        >
           <div className="grid md:grid-cols-2 gap-8 items-center">
             <div>
               <h2 className="text-3xl font-bold mb-4">Ready to Start Your Project?</h2>
@@ -218,7 +269,7 @@ export default function Index() {
               />
             </div>
           </div>
-        </div>
+        </motion.div>
       </section>
     </div>
   );

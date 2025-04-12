@@ -11,9 +11,9 @@ export default function About() {
       <h1 className="text-4xl font-bold text-center mb-12">About Micro UV Printers</h1>
       
       <div className="mb-12">
-        <h2 className="text-2xl font-semibold mb-4">20+ Years of Excellence</h2>
+        <h2 className="text-2xl font-semibold mb-4">30+ Years of Excellence</h2>
         <p className="text-gray-700 mb-4">
-          Since our establishment in 2003, Micro UV Printers has been at the forefront of the printing and packaging industry in India. 
+          Since our establishment in 1995, Micro UV Printers has been at the forefront of the printing and packaging industry in India. 
           What started as a small family business in Dehradun has grown into a trusted partner for businesses across multiple industries.
         </p>
         <p className="text-gray-700 mb-4">

@@ -1,6 +1,7 @@
 
 import { Link } from "react-router-dom";
 import { Instagram, Linkedin, MessageSquare, MapPin, Mail, Phone } from "lucide-react";
+import WhiteLogo from '../assets/whitelogo.png'; // Adjust the path as necessary
 
 export default function Footer() {
   return (
@@ -11,17 +12,17 @@ export default function Footer() {
           <div className="col-span-1 md:col-span-1 lg:col-span-2">
             <Link to="/" className="flex items-center mb-4 hover-scale">
               <img
-                src="/logo.png"
+                src={WhiteLogo}
                 alt="Micro UV Printers"
                 className="h-8 w-auto"
               />
               <span className="ml-2 text-lg font-bold">Micro UV Printers</span>
             </Link>
             <p className="mb-4 text-gray-300">
-              20+ years of excellence in the printing & packaging industry,
+              30+ years of excellence in the printing & packaging industry,
               specializing in UV printing solutions for businesses across India.
             </p>
-            <p className="text-gray-300">GST Number: 05ABCDE1234F1Z1</p>
+            <p className="text-gray-300">GST Number: 05AKWPK9182B1ZT</p>
           </div>
 
           {/* Quick Links */}
@@ -53,11 +54,13 @@ export default function Footer() {
             <ul className="space-y-2">
               {[
                 "UV Printing",
+                "Digital Printing",
+                "Offset Printing",
                 "Labels & Stickers",
                 "Tags & Cards",
                 "Packaging Solutions",
-                "Medicine Boxes",
                 "Cartons & Boxes",
+                "& more...",
               ].map((service) => (
                 <li key={service} className="text-gray-300 hover-lift">
                   {service}
@@ -85,19 +88,19 @@ export default function Footer() {
               <li className="flex items-center group">
                 <Phone className="h-5 w-5 text-primary mr-2 flex-shrink-0 group-hover:text-accent transition-colors duration-300" />
                 <a
-                  href="tel:+919876543210"
+                  href="tel:+919897454817"
                   className="text-gray-300 hover:text-white transition-colors duration-200"
                 >
-                  +91-9876543210
+                  +91-9897454817
                 </a>
               </li>
               <li className="flex items-center group">
                 <Mail className="h-5 w-5 text-primary mr-2 flex-shrink-0 group-hover:text-accent transition-colors duration-300" />
                 <a
-                  href="mailto:contact@microuvprinters.in"
+                  href="mailto:laxmankamboj@gmail.com"
                   className="text-gray-300 hover:text-white transition-colors duration-200"
                 >
-                  contact@microuvprinters.in
+                  laxmankamboj@gmail.com
                 </a>
               </li>
             </ul>
