@@ -1,4 +1,4 @@
-
+// src/lib/invoice-generator.ts - Apply these changes to your existing file
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { formatCurrency, formatDate } from './utils';
@@ -21,14 +21,18 @@ export interface InvoiceData {
 }
 
 export const generateInvoicePDF = async (invoiceData: InvoiceData): Promise<Blob> => {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     try {
+      console.log("Starting PDF generation for invoice:", invoiceData.invoiceId);
+      
       // Create a new PDF document (A4 size in mm)
       const doc = new jsPDF({
         orientation: 'portrait',
         unit: 'mm',
         format: 'a4'
       });
+      
+      console.log("PDF document created, adding content...");
       
       // Add company header
       doc.setFontSize(20);
@@ -48,6 +52,8 @@ export const generateInvoicePDF = async (invoiceData: InvoiceData): Promise<Blob
       // Invoice title
       doc.setFontSize(18);
       doc.text('TAX INVOICE', doc.internal.pageSize.width / 2, 60, { align: 'center' });
+      
+      console.log("Adding invoice details...");
       
       // Add a horizontal line
       doc.setDrawColor(170, 170, 170);
@@ -72,35 +78,47 @@ export const generateInvoicePDF = async (invoiceData: InvoiceData): Promise<Blob
         doc.text(`GSTIN: ${invoiceData.gstNumber}`, 20, 110);
       }
       
+      console.log("Adding product table...");
+      
       // Product table
       const tableStartY = invoiceData.gstNumber ? 120 : 115;
       
-      autoTable(doc, {
-        startY: tableStartY,
-        head: [['Item', 'Description', 'HSN/SAC', 'Qty', 'Price', 'Amount']],
-        body: invoiceData.products.map((item, index) => [
-          index + 1,
-          item.name,
-          invoiceData.hsnCode || '4911',  // Default HSN code for printing items
-          item.quantity,
-          formatCurrency(item.price).replace('₹', '').trim(),
-          formatCurrency(item.price * item.quantity).replace('₹', '').trim()
-        ]),
-        theme: 'grid',
-        headStyles: { fillColor: [80, 80, 80] },
-        margin: { left: 20, right: 20 },
-        columnStyles: {
-          0: { cellWidth: 10 },
-          1: { cellWidth: 60 },
-          2: { cellWidth: 20 },
-          3: { cellWidth: 15, halign: 'center' },
-          4: { cellWidth: 25, halign: 'right' },
-          5: { cellWidth: 25, halign: 'right' }
-        }
-      });
+      try {
+        autoTable(doc, {
+          startY: tableStartY,
+          head: [['Item', 'Description', 'HSN/SAC', 'Qty', 'Price', 'Amount']],
+          body: invoiceData.products.map((item, index) => [
+            index + 1,
+            item.name,
+            invoiceData.hsnCode || '4911',  // Default HSN code for printing items
+            item.quantity,
+            formatCurrency(item.price).replace('₹', '').trim(),
+            formatCurrency(item.price * item.quantity).replace('₹', '').trim()
+          ]),
+          theme: 'grid',
+          headStyles: { fillColor: [80, 80, 80] },
+          margin: { left: 20, right: 20 },
+          columnStyles: {
+            0: { cellWidth: 10 },
+            1: { cellWidth: 60 },
+            2: { cellWidth: 20 },
+            3: { cellWidth: 15, halign: 'center' },
+            4: { cellWidth: 25, halign: 'right' },
+            5: { cellWidth: 25, halign: 'right' }
+          }
+        });
+      } catch (tableError) {
+        console.error("Error creating table:", tableError);
+        // Continue with a simplified table if there's an error
+        doc.text("Product: " + invoiceData.products[0].name, 20, tableStartY + 10);
+        doc.text("Quantity: " + invoiceData.products[0].quantity, 20, tableStartY + 20);
+        doc.text("Price: " + formatCurrency(invoiceData.products[0].price), 20, tableStartY + 30);
+      }
+      
+      console.log("Adding invoice summary...");
       
       // Get the ending Y position of the table
-      const tableEndY = (doc as any).lastAutoTable.finalY + 10;
+      const tableEndY = (doc as any).lastAutoTable?.finalY + 10 || (tableStartY + 40);
       
       // Summary
       doc.setFontSize(10);
@@ -132,18 +150,28 @@ export const generateInvoicePDF = async (invoiceData: InvoiceData): Promise<Blob
       doc.text('Thank you for your business!', doc.internal.pageSize.width / 2, footerY - 10, { align: 'center' });
       doc.text('For any queries, please contact: support@microuvprinters.com', doc.internal.pageSize.width / 2, footerY - 5, { align: 'center' });
       
+      console.log("Generating final PDF blob...");
+      
       // Convert to blob
       const pdfBlob = doc.output('blob');
+      console.log("PDF blob created successfully:", pdfBlob.size, "bytes");
       resolve(pdfBlob);
     } catch (error) {
       console.error('Error generating PDF:', error);
       // Create a simple fallback PDF if the main generation fails
-      const fallbackDoc = new jsPDF();
-      fallbackDoc.text('Invoice #' + invoiceData.invoiceId, 10, 10);
-      fallbackDoc.text('There was an error generating the complete invoice.', 10, 20);
-      fallbackDoc.text('Please contact support.', 10, 30);
-      const fallbackBlob = fallbackDoc.output('blob');
-      resolve(fallbackBlob);
+      try {
+        console.log("Creating fallback PDF due to error...");
+        const fallbackDoc = new jsPDF();
+        fallbackDoc.text('Invoice #' + invoiceData.invoiceId, 10, 10);
+        fallbackDoc.text('There was an error generating the complete invoice.', 10, 20);
+        fallbackDoc.text('Please contact support.', 10, 30);
+        const fallbackBlob = fallbackDoc.output('blob');
+        console.log("Fallback PDF created:", fallbackBlob.size, "bytes");
+        resolve(fallbackBlob);
+      } catch (fallbackError) {
+        console.error("Even fallback PDF failed:", fallbackError);
+        reject(new Error("PDF generation failed completely"));
+      }
     }
   });
 };

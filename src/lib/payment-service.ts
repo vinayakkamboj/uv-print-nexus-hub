@@ -1,4 +1,4 @@
-
+// src/lib/payment-service.ts
 interface RazorpayResponse {
   razorpay_payment_id: string;
   razorpay_order_id: string;
@@ -17,10 +17,25 @@ export interface PaymentDetails {
 
 export const initializeRazorpay = (): Promise<boolean> => {
   return new Promise((resolve) => {
+    // Check if Razorpay is already loaded
+    if (window.Razorpay) {
+      console.log("Razorpay already loaded");
+      resolve(true);
+      return;
+    }
+    
+    console.log("Loading Razorpay script...");
     const script = document.createElement('script');
     script.src = 'https://checkout.razorpay.com/v1/checkout.js';
-    script.onload = () => resolve(true);
-    script.onerror = () => resolve(false);
+    script.async = true;
+    script.onload = () => {
+      console.log("Razorpay script loaded successfully");
+      resolve(true);
+    };
+    script.onerror = () => {
+      console.error("Failed to load Razorpay script");
+      resolve(false);
+    };
     document.body.appendChild(script);
   });
 };
@@ -32,11 +47,14 @@ export const createRazorpayOrder = async (
   customerEmail: string
 ): Promise<PaymentDetails> => {
   try {
+    console.log("Creating Razorpay order...");
+    
     // In a real implementation, you would call your backend to create an order in Razorpay
-    // For demo purposes, we'll simulate this process
+    // For now, we'll simulate this process
     
     // Generate a unique ID for the Razorpay order
     const razorpayOrderId = `rzp_order_${Math.random().toString(36).substring(2, 15)}`;
+    console.log("Razorpay order created:", razorpayOrderId);
     
     return {
       id: razorpayOrderId,
@@ -63,29 +81,44 @@ export const processPayment = (
   }
 ): Promise<PaymentDetails> => {
   return new Promise((resolve, reject) => {
-    // For demo purposes only - simulate a successful payment without opening Razorpay
-    // This is to bypass the Firebase permissions issue
-    // In a real implementation, you would use the commented-out code below
+    console.log("Processing payment with Razorpay...");
     
-    // Simulate a 2-second delay to mimic payment processing
-    setTimeout(() => {
-      const mockPaymentId = `pay_${Math.random().toString(36).substring(2, 15)}`;
-      
-      const paymentDetails: PaymentDetails = {
-        id: orderDetails.razorpayOrderId,
-        amount: orderDetails.amount,
-        currency: orderDetails.currency,
-        status: 'completed',
-        timestamp: new Date(),
-        paymentId: mockPaymentId,
-        method: 'Razorpay (Demo)',
-      };
-      
-      resolve(paymentDetails);
-    }, 2000);
+    // Check if we should use a real Razorpay integration or simulate payment
+    const useRealRazorpay = false; // Set to true when you want to use the actual Razorpay
     
-    /* 
-    // Real Razorpay implementation (commented out for demo)
+    if (!useRealRazorpay) {
+      console.log("Using simulated payment process");
+      // Simulate a 2-second delay to mimic payment processing
+      setTimeout(() => {
+        const mockPaymentId = `pay_${Math.random().toString(36).substring(2, 15)}`;
+        
+        const paymentDetails: PaymentDetails = {
+          id: orderDetails.razorpayOrderId,
+          amount: orderDetails.amount,
+          currency: orderDetails.currency,
+          status: 'completed',
+          timestamp: new Date(),
+          paymentId: mockPaymentId,
+          method: 'Razorpay (Demo)',
+        };
+        
+        console.log("Payment simulation completed:", paymentDetails);
+        resolve(paymentDetails);
+      }, 2000);
+      
+      return;
+    }
+    
+    // Only execute this code if useRealRazorpay is true
+    // First check if Razorpay is available
+    if (typeof window.Razorpay === 'undefined') {
+      console.error("Razorpay is not initialized");
+      reject(new Error('Razorpay is not initialized. Please refresh and try again.'));
+      return;
+    }
+    
+    console.log("Opening Razorpay payment window...");
+    
     const options = {
       key: 'rzp_test_HJG5Rtx42VMzMK', // Razorpay test key
       amount: orderDetails.amount * 100, // Razorpay expects amount in paise
@@ -102,6 +135,7 @@ export const processPayment = (
       },
       handler: function (response: RazorpayResponse) {
         // This function is called when payment is successful
+        console.log("Payment successful:", response);
         const paymentDetails: PaymentDetails = {
           id: orderDetails.razorpayOrderId,
           amount: orderDetails.amount,
@@ -115,14 +149,26 @@ export const processPayment = (
       },
       modal: {
         ondismiss: function () {
+          console.log("Payment modal dismissed by user");
           reject(new Error('Payment cancelled by user'));
         },
       },
     };
 
-    // @ts-ignore - Razorpay is loaded via script
-    const razorpay = new window.Razorpay(options);
-    razorpay.open();
-    */
+    try {
+      const razorpay = new window.Razorpay(options);
+      razorpay.open();
+      console.log("Razorpay payment window opened");
+    } catch (error) {
+      console.error("Error opening Razorpay:", error);
+      reject(error);
+    }
   });
 };
+
+// Add this TypeScript declaration to recognize the Razorpay global
+declare global {
+  interface Window {
+    Razorpay: any;
+  }
+}

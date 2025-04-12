@@ -1,8 +1,6 @@
-
+// src/lib/email-service.ts
 import { InvoiceData } from './invoice-generator';
 
-// In a real implementation, we'd use an actual email service
-// This is a placeholder implementation
 export const sendInvoiceEmail = async (
   invoiceData: InvoiceData,
   pdfBlob: Blob,
@@ -18,13 +16,19 @@ export const sendInvoiceEmail = async (
     console.log('Order ID:', invoiceData.orderId);
     console.log('Customer:', invoiceData.customerName);
     console.log('Total Amount:', invoiceData.totalAmount);
+    
+    // Check if the PDF blob is valid
+    if (!pdfBlob || pdfBlob.size === 0) {
+      console.warn('Warning: PDF blob is empty or invalid');
+    } else {
+      console.log('PDF size:', pdfBlob.size, 'bytes');
+    }
+    
     console.log('=== END EMAIL SIMULATION ===');
     
-    // In a production environment, we would use Firebase Cloud Functions or a backend service
-    // to handle the actual email sending with Nodemailer or a service like SendGrid
-    
     // Simulate successful email sending for demo purposes
-    await new Promise(resolve => setTimeout(resolve, 500));
+    // Shorter timeout to avoid long waits
+    await new Promise(resolve => setTimeout(resolve, 300));
     
     return {
       success: true,
@@ -32,6 +36,7 @@ export const sendInvoiceEmail = async (
     };
   } catch (error) {
     console.error('Error sending invoice email:', error);
+    // Don't let this failure block the entire process
     return {
       success: false,
       message: `Failed to send invoice email: ${error instanceof Error ? error.message : 'Unknown error'}`

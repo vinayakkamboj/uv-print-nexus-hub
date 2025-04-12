@@ -1,7 +1,4 @@
-
-import { collection, addDoc, serverTimestamp, updateDoc, doc } from "firebase/firestore";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { db, storage } from "./firebase";
+// src/lib/invoice-service.ts
 import { generateInvoicePDF, InvoiceData } from "./invoice-generator";
 import { sendInvoiceEmail } from "./email-service";
 import { generateId } from "./utils";
@@ -27,12 +24,11 @@ export const createOrder = async (orderData: Omit<OrderData, "id">): Promise<{
   message: string;
 }> => {
   try {
-    // For demo purposes, simulate order creation without requiring Firebase write permissions
-    // In a production environment, you would actually save this to Firestore
     console.log("Creating order with data:", orderData);
     
     // Generate a simulated order ID
     const mockOrderId = `order_${generateId(12)}`;
+    console.log("Order created with ID:", mockOrderId);
     
     return {
       success: true,
@@ -53,7 +49,6 @@ export const updateOrderAfterPayment = async (orderId: string, paymentDetails: P
   message: string;
 }> => {
   try {
-    // In demo mode, we'll just log the update instead of actually writing to Firestore
     console.log("Updating order after payment:", { orderId, paymentDetails });
     
     return {
@@ -75,9 +70,12 @@ export const createAndSendInvoice = async (orderData: OrderData, paymentDetails:
   pdfUrl?: string;
   message: string;
 }> => {
+  console.log("Starting invoice creation process...");
+  
   try {
     // Generate invoice ID
     const invoiceId = `INV-${generateId(8).toUpperCase()}`;
+    console.log("Generated invoice ID:", invoiceId);
     
     // Prepare invoice data
     const invoiceData: InvoiceData = {
@@ -99,35 +97,56 @@ export const createAndSendInvoice = async (orderData: OrderData, paymentDetails:
       totalAmount: orderData.totalAmount,
     };
     
-    // Generate PDF invoice
-    const pdfBlob = await generateInvoicePDF(invoiceData);
+    console.log("Invoice data prepared, generating PDF...");
     
-    // In demo mode, we'll skip the Firebase storage upload
-    // and just simulate a PDF URL
+    // Set a timeout to prevent hanging forever
+    const pdfPromise = Promise.race([
+      generateInvoicePDF(invoiceData),
+      new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error("PDF generation timed out")), 10000);
+      }),
+    ]);
+    
+    // Generate PDF invoice with timeout protection
+    const pdfBlob = await pdfPromise;
+    console.log("PDF generated successfully");
+    
+    // Mock PDF URL (for demo)
     const mockPdfUrl = `https://example.com/invoices/${invoiceId}.pdf`;
     
-    // Send invoice email - this should still work as it's a client-side simulation
-    const emailResult = await sendInvoiceEmail(invoiceData, pdfBlob, true);
+    console.log("Sending invoice email...");
     
-    // If email sending fails, log the error but continue
-    if (!emailResult.success) {
-      console.error("Invoice saved but email sending failed:", emailResult.message);
-      return {
-        success: true,
-        invoiceId,
-        pdfUrl: mockPdfUrl,
-        message: "Invoice generated successfully but email delivery failed",
-      };
+    // Send invoice email with timeout protection
+    const emailPromise = Promise.race([
+      sendInvoiceEmail(invoiceData, pdfBlob, true),
+      new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error("Email sending timed out")), 5000);
+      }),
+    ]);
+    
+    // Send email
+    try {
+      const emailResult = await emailPromise;
+      console.log("Email result:", emailResult);
+      
+      if (!emailResult.success) {
+        console.warn("Invoice saved but email sending failed:", emailResult.message);
+      }
+    } catch (error) {
+      console.error("Email sending failed but continuing:", error);
+      // We continue even if email fails
     }
+    
+    console.log("Invoice process completed successfully");
     
     return {
       success: true,
       invoiceId,
       pdfUrl: mockPdfUrl,
-      message: "Invoice generated and sent successfully",
+      message: "Invoice generated successfully",
     };
   } catch (error) {
-    console.error("Error generating invoice:", error);
+    console.error("Error in invoice generation process:", error);
     return {
       success: false,
       message: `Failed to generate invoice: ${error instanceof Error ? error.message : "Unknown error"}`,
