@@ -11,12 +11,14 @@ export default function Login() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [domainError, setDomainError] = useState(false);
   const { login, googleSignIn } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setDomainError(false);
     
     if (!email || !password) {
       toast({
@@ -50,6 +52,7 @@ export default function Login() {
   const handleGoogleSignIn = async () => {
     try {
       setLoading(true);
+      setDomainError(false);
       await googleSignIn();
       toast({
         title: "Success",
@@ -58,11 +61,17 @@ export default function Login() {
       navigate("/dashboard");
     } catch (error: any) {
       console.error("Google sign-in error:", error);
-      toast({
-        title: "Login Failed",
-        description: error.message || "Failed to log in with Google. Please try again.",
-        variant: "destructive",
-      });
+      
+      // Check for unauthorized domain error
+      if (error.code === "auth/unauthorized-domain") {
+        setDomainError(true);
+      } else {
+        toast({
+          title: "Login Failed",
+          description: error.message || "Failed to log in with Google. Please try again.",
+          variant: "destructive",
+        });
+      }
     } finally {
       setLoading(false);
     }
@@ -77,6 +86,17 @@ export default function Login() {
             Access your Micro UV Printers account
           </p>
         </div>
+
+        {domainError && (
+          <div className="mb-6 p-4 border border-red-300 bg-red-50 rounded-md text-red-800">
+            <h3 className="font-medium">Domain Not Authorized</h3>
+            <p className="text-sm mt-1">
+              This domain is not authorized for Google sign-in. Please add 
+              <code className="mx-1 px-1 py-0.5 bg-red-100 rounded">lovableproject.com</code> 
+              to your Firebase authorized domains list in the Firebase console.
+            </p>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="space-y-2">
