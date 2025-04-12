@@ -17,6 +17,7 @@ export interface InvoiceData {
   }[];
   totalAmount: number;
   gstNumber?: string;
+  hsnCode?: string;
 }
 
 export const generateInvoicePDF = async (invoiceData: InvoiceData): Promise<Blob> => {
@@ -41,7 +42,7 @@ export const generateInvoicePDF = async (invoiceData: InvoiceData): Promise<Blob
       doc.text('Micro UV Printers', rightMargin, 35, { align: 'right' });
       doc.text('123 Print Avenue, Industrial Area', rightMargin, 39, { align: 'right' });
       doc.text('Delhi, India - 110001', rightMargin, 43, { align: 'right' });
-      doc.text('GSTIN: 07AABCU9603R1ZP', rightMargin, 47, { align: 'right' });
+      doc.text('GSTIN: 06ABCDE1234F1Z5', rightMargin, 47, { align: 'right' });
       doc.text('Contact: +91 98765 43210', rightMargin, 51, { align: 'right' });
       
       // Invoice title
@@ -76,10 +77,11 @@ export const generateInvoicePDF = async (invoiceData: InvoiceData): Promise<Blob
       
       autoTable(doc, {
         startY: tableStartY,
-        head: [['Item', 'Description', 'Qty', 'Price', 'Amount']],
+        head: [['Item', 'Description', 'HSN/SAC', 'Qty', 'Price', 'Amount']],
         body: invoiceData.products.map((item, index) => [
           index + 1,
           item.name,
+          invoiceData.hsnCode || '4911',  // Default HSN code for printing items
           item.quantity,
           formatCurrency(item.price).replace('₹', '').trim(),
           formatCurrency(item.price * item.quantity).replace('₹', '').trim()
@@ -88,35 +90,41 @@ export const generateInvoicePDF = async (invoiceData: InvoiceData): Promise<Blob
         headStyles: { fillColor: [80, 80, 80] },
         margin: { left: 20, right: 20 },
         columnStyles: {
-          0: { cellWidth: 15 },
-          1: { cellWidth: 80 },
-          2: { cellWidth: 15, halign: 'center' },
-          3: { cellWidth: 30, halign: 'right' },
-          4: { cellWidth: 30, halign: 'right' }
+          0: { cellWidth: 10 },
+          1: { cellWidth: 60 },
+          2: { cellWidth: 20 },
+          3: { cellWidth: 15, halign: 'center' },
+          4: { cellWidth: 25, halign: 'right' },
+          5: { cellWidth: 25, halign: 'right' }
         }
       });
       
-      // Summary
+      // Get the ending Y position of the table
       const tableEndY = (doc as any).lastAutoTable.finalY + 10;
+      
+      // Summary
       doc.setFontSize(10);
       doc.text('Subtotal:', 130, tableEndY);
       doc.text(formatCurrency(invoiceData.totalAmount).replace('₹', '').trim(), rightMargin, tableEndY, { align: 'right' });
       
-      doc.text('GST (18%):', 130, tableEndY + 5);
-      doc.text(formatCurrency(invoiceData.totalAmount * 0.18).replace('₹', '').trim(), rightMargin, tableEndY + 5, { align: 'right' });
+      doc.text('CGST (9%):', 130, tableEndY + 5);
+      doc.text(formatCurrency(invoiceData.totalAmount * 0.09).replace('₹', '').trim(), rightMargin, tableEndY + 5, { align: 'right' });
+      
+      doc.text('SGST (9%):', 130, tableEndY + 10);
+      doc.text(formatCurrency(invoiceData.totalAmount * 0.09).replace('₹', '').trim(), rightMargin, tableEndY + 10, { align: 'right' });
       
       doc.setFontSize(12);
-      doc.text('Total:', 130, tableEndY + 12);
-      doc.text(formatCurrency(invoiceData.totalAmount * 1.18).replace('₹', '').trim(), rightMargin, tableEndY + 12, { align: 'right' });
+      doc.text('Total:', 130, tableEndY + 17);
+      doc.text(formatCurrency(invoiceData.totalAmount * 1.18).replace('₹', '').trim(), rightMargin, tableEndY + 17, { align: 'right' });
       
       // Terms and notes
       doc.setFontSize(10);
-      doc.text('Terms & Notes', 20, tableEndY + 25);
+      doc.text('Terms & Notes', 20, tableEndY + 30);
       
       doc.setFontSize(8);
-      doc.text('1. Payment is due within 15 days', 20, tableEndY + 30);
-      doc.text('2. Please make payment to bank account: HDFC Bank - 12345678901234', 20, tableEndY + 35);
-      doc.text('3. This is a computer-generated invoice and does not require a signature', 20, tableEndY + 40);
+      doc.text('1. Payment is due within 15 days', 20, tableEndY + 35);
+      doc.text('2. Please make payment to bank account: HDFC Bank - 12345678901234', 20, tableEndY + 40);
+      doc.text('3. This is a computer-generated invoice and does not require a signature', 20, tableEndY + 45);
       
       // Footer
       const footerY = doc.internal.pageSize.height - 20;

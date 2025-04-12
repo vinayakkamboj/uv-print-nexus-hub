@@ -1,10 +1,11 @@
 
-import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp, updateDoc, doc } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { db, storage } from "./firebase";
 import { generateInvoicePDF, InvoiceData } from "./invoice-generator";
 import { sendInvoiceEmail } from "./email-service";
 import { generateId } from "./utils";
+import { PaymentDetails } from "./payment-service";
 
 export interface OrderData {
   id: string;
@@ -17,9 +18,65 @@ export interface OrderData {
   totalAmount: number;
   customerName: string;
   customerEmail: string;
+  hsnCode?: string;
 }
 
-export const createAndSendInvoice = async (orderData: OrderData): Promise<{
+export const createOrder = async (orderData: Omit<OrderData, "id">): Promise<{
+  success: boolean;
+  orderId?: string;
+  message: string;
+}> => {
+  try {
+    // Save initial order to Firestore
+    const orderRef = await addDoc(collection(db, "orders"), {
+      ...orderData,
+      status: "pending_payment", // New status to indicate payment is pending
+      timestamp: serverTimestamp(),
+    });
+
+    return {
+      success: true,
+      orderId: orderRef.id,
+      message: "Order created successfully",
+    };
+  } catch (error) {
+    console.error("Error creating order:", error);
+    return {
+      success: false,
+      message: `Failed to create order: ${error instanceof Error ? error.message : "Unknown error"}`,
+    };
+  }
+};
+
+export const updateOrderAfterPayment = async (orderId: string, paymentDetails: PaymentDetails): Promise<{
+  success: boolean;
+  message: string;
+}> => {
+  try {
+    const orderRef = doc(db, "orders", orderId);
+    
+    await updateDoc(orderRef, {
+      status: "received",
+      paymentDetails: {
+        ...paymentDetails,
+        timestamp: serverTimestamp(),
+      },
+    });
+
+    return {
+      success: true,
+      message: "Order updated with payment details",
+    };
+  } catch (error) {
+    console.error("Error updating order:", error);
+    return {
+      success: false,
+      message: `Failed to update order: ${error instanceof Error ? error.message : "Unknown error"}`,
+    };
+  }
+};
+
+export const createAndSendInvoice = async (orderData: OrderData, paymentDetails: PaymentDetails): Promise<{
   success: boolean;
   invoiceId?: string;
   pdfUrl?: string;
@@ -38,6 +95,7 @@ export const createAndSendInvoice = async (orderData: OrderData): Promise<{
       customerEmail: orderData.customerEmail,
       customerAddress: orderData.deliveryAddress,
       gstNumber: orderData.gstNumber,
+      hsnCode: orderData.hsnCode || '4911', // Default HSN code for printing items
       products: [
         {
           name: `${orderData.productType} Printing`,
@@ -66,6 +124,8 @@ export const createAndSendInvoice = async (orderData: OrderData): Promise<{
       customerEmail: orderData.customerEmail,
       totalAmount: orderData.totalAmount,
       pdfUrl,
+      paymentId: paymentDetails.paymentId,
+      paymentMethod: paymentDetails.method,
       createdAt: serverTimestamp(),
       status: "paid",
     });

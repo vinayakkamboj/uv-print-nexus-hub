@@ -4,8 +4,6 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   collection,
-  addDoc,
-  serverTimestamp,
   query,
   where,
   getDocs,
@@ -34,7 +32,8 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { generateId, isValidGSTIN } from "@/lib/utils";
 import { AlertCircle, Upload } from "lucide-react";
-import { createAndSendInvoice } from "@/lib/invoice-service";
+import { createOrder, updateOrderAfterPayment, createAndSendInvoice } from "@/lib/invoice-service";
+import { initializeRazorpay, createRazorpayOrder, processPayment } from "@/lib/payment-service";
 
 const productTypes = [
   { value: "sticker", label: "Stickers & Labels" },
@@ -43,6 +42,15 @@ const productTypes = [
   { value: "medicine_box", label: "Medicine Boxes" },
   { value: "custom", label: "Custom Packaging" },
 ];
+
+// HSN codes for printing products
+const hsnCodes = {
+  sticker: "4821",     // Printed labels
+  tag: "4821",         // Printed tags
+  box: "4819",         // Cartons, boxes
+  medicine_box: "4819", // Pharmaceutical packaging
+  custom: "4911",      // Other printed matter
+};
 
 export default function Order() {
   const { user, userData } = useAuth();
@@ -57,6 +65,19 @@ export default function Order() {
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [processingStep, setProcessingStep] = useState("");
+  const [orderId, setOrderId] = useState<string | null>(null);
+  const [paymentProcessing, setPaymentProcessing] = useState(false);
+
+  useEffect(() => {
+    // Initialize Razorpay when component mounts
+    initializeRazorpay()
+      .then((success) => {
+        if (!success) {
+          console.error("Razorpay SDK failed to load");
+        }
+      })
+      .catch(console.error);
+  }, []);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -114,7 +135,7 @@ export default function Order() {
       setLoading(true);
       setProcessingStep("Checking existing orders...");
 
-      // 🔎 Check if any previous orders are pending
+      // Check if any previous orders are pending
       const orderQuery = query(
         collection(db, "orders"),
         where("userId", "==", user?.uid),
@@ -133,7 +154,7 @@ export default function Order() {
         return;
       }
 
-      // Proceed to upload file and place order
+      // Proceed to upload file
       setProcessingStep("Uploading your design file...");
       const fileId = generateId();
       const fileExtension = file.name.split(".").pop();
@@ -146,10 +167,13 @@ export default function Order() {
       const fileUrl = await getDownloadURL(uploadResult.ref);
 
       const estimatedPrice = calculateEstimatedPrice();
+      
+      // Get HSN code based on product type
+      const hsnCode = hsnCodes[productType as keyof typeof hsnCodes] || "4911";
 
       setProcessingStep("Creating your order...");
       const orderData = {
-        userId: user?.uid,
+        userId: user?.uid || "",
         productType,
         quantity: parseInt(quantity),
         specifications,
@@ -157,25 +181,88 @@ export default function Order() {
         gstNumber,
         fileUrl,
         fileName: file.name,
-        status: "received",
         totalAmount: estimatedPrice,
-        timestamp: serverTimestamp(),
         customerName: userData?.name || "Customer",
         customerEmail: userData?.email || "",
+        hsnCode,
       };
 
-      const orderRef = await addDoc(collection(db, "orders"), orderData);
+      // Create initial order
+      const orderResult = await createOrder(orderData);
+      
+      if (!orderResult.success || !orderResult.orderId) {
+        throw new Error(orderResult.message);
+      }
+      
+      setOrderId(orderResult.orderId);
+
+      // Now proceed to payment
+      setProcessingStep("Initiating payment...");
+      setLoading(false);
+      
+      toast({
+        title: "Order Created",
+        description: "Proceed to payment to complete your order.",
+      });
+      
+      // Start payment process
+      handlePaymentProcess(orderResult.orderId, orderData);
+      
+    } catch (error) {
+      console.error("Error placing order:", error);
+      toast({
+        title: "Error",
+        description:
+          "There was a problem submitting your order. Please try again.",
+        variant: "destructive",
+      });
+      setLoading(false);
+      setProcessingStep("");
+    }
+  };
+
+  const handlePaymentProcess = async (createdOrderId: string, orderData: any) => {
+    try {
+      setPaymentProcessing(true);
+      setProcessingStep("Setting up payment gateway...");
+      
+      // Create Razorpay order
+      const razorpayOrder = await createRazorpayOrder(
+        createdOrderId,
+        orderData.totalAmount,
+        orderData.customerName,
+        orderData.customerEmail
+      );
+      
+      setProcessingStep("Processing payment...");
+      
+      // Process the payment
+      const paymentResult = await processPayment({
+        orderId: createdOrderId,
+        razorpayOrderId: razorpayOrder.id,
+        amount: orderData.totalAmount,
+        currency: "INR",
+        customerName: orderData.customerName,
+        customerEmail: orderData.customerEmail,
+        description: `Order for ${orderData.productType} Printing - Qty: ${orderData.quantity}`,
+      });
+      
+      // Payment successful
+      setProcessingStep("Updating order status...");
+      
+      // Update order with payment details
+      await updateOrderAfterPayment(createdOrderId, paymentResult);
       
       // Generate and send invoice
       setProcessingStep("Generating invoice...");
-      const invoiceResult = await createAndSendInvoice({
-        ...orderData,
-        id: orderRef.id,
-      });
-
-      setProcessingStep("Finishing up...");
+      const invoiceResult = await createAndSendInvoice(
+        { ...orderData, id: createdOrderId },
+        paymentResult
+      );
       
-      let toastDescription = `Your order #${orderRef.id} has been received and is being processed.`;
+      setProcessingStep("Completing order...");
+      
+      let toastDescription = `Your order has been received and is being processed.`;
       
       if (invoiceResult.success) {
         toastDescription += " An invoice has been generated and sent to your email.";
@@ -185,18 +272,21 @@ export default function Order() {
         title: "Order Placed Successfully",
         description: toastDescription,
       });
-
+      
       navigate("/dashboard");
     } catch (error) {
-      console.error("Error placing order:", error);
+      console.error("Payment processing error:", error);
+      
       toast({
-        title: "Error",
-        description:
-          "There was a problem submitting your order. Please try again.",
+        title: "Payment Failed",
+        description: "There was an issue with the payment. Please try again or contact support.",
         variant: "destructive",
       });
+      
+      // If we have an order ID but payment failed, we could delete the order
+      // or mark it as payment_failed for the user to retry payment later
     } finally {
-      setLoading(false);
+      setPaymentProcessing(false);
       setProcessingStep("");
     }
   };
@@ -220,115 +310,126 @@ export default function Order() {
                   Please provide accurate specifications for your print job.
                 </CardDescription>
               </CardHeader>
-              <form onSubmit={handleSubmit}>
+              {orderId && paymentProcessing ? (
                 <CardContent className="space-y-6">
-                  <div className="space-y-2">
-                    <Label htmlFor="productType">Product Type</Label>
-                    <Select
-                      value={productType}
-                      onValueChange={setProductType}
-                      required
-                    >
-                      <SelectTrigger id="productType">
-                        <SelectValue placeholder="Select product type" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {productTypes.map((type) => (
-                          <SelectItem key={type.value} value={type.value}>
-                            {type.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="quantity">Quantity</Label>
-                    <Input
-                      id="quantity"
-                      type="number"
-                      placeholder="Enter quantity"
-                      value={quantity}
-                      onChange={(e) => setQuantity(e.target.value)}
-                      min="1"
-                      required
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="specifications">Specifications</Label>
-                    <Textarea
-                      id="specifications"
-                      placeholder="Enter details about size, colors, material, etc."
-                      value={specifications}
-                      onChange={(e) => setSpecifications(e.target.value)}
-                      rows={4}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="file">Upload Design File</Label>
-                    <div className="flex items-center justify-center border-2 border-dashed border-gray-300 rounded-lg p-6">
-                      <label className="w-full cursor-pointer">
-                        <div className="flex flex-col items-center">
-                          <Upload className="h-10 w-10 text-gray-400 mb-2" />
-                          <span className="text-gray-600 mb-1">
-                            {file ? file.name : "Click to upload or drag and drop"}
-                          </span>
-                          <span className="text-xs text-gray-500">
-                            PDF, PNG, JPG or AI (Max 20MB)
-                          </span>
-                        </div>
-                        <Input
-                          id="file"
-                          type="file"
-                          accept=".pdf,.png,.jpg,.jpeg,.ai"
-                          onChange={handleFileChange}
-                          className="hidden"
-                          required
-                        />
-                      </label>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="gstNumber">GST Number</Label>
-                    <Input
-                      id="gstNumber"
-                      placeholder="e.g., 05ABCDE1234F1Z1"
-                      value={gstNumber}
-                      onChange={(e) => setGstNumber(e.target.value)}
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="deliveryAddress">Delivery Address</Label>
-                    <Textarea
-                      id="deliveryAddress"
-                      placeholder="Enter full delivery address"
-                      value={deliveryAddress}
-                      onChange={(e) => setDeliveryAddress(e.target.value)}
-                      rows={3}
-                      required
-                    />
+                  <div className="text-center py-10">
+                    <div className="mb-4 h-12 w-12 animate-spin rounded-full border-t-4 border-primary mx-auto"></div>
+                    <h3 className="text-lg font-medium mb-2">Processing Payment</h3>
+                    <p className="text-gray-500">{processingStep}</p>
+                    <p className="text-sm mt-4">Please complete the payment in the Razorpay window.</p>
                   </div>
                 </CardContent>
-                <CardFooter className="flex justify-between">
-                  <Button variant="outline" type="button" onClick={() => navigate(-1)}>
-                    Cancel
-                  </Button>
-                  <Button type="submit" disabled={loading}>
-                    {loading ? (
-                      <div className="flex items-center">
-                        <div className="mr-2 h-4 w-4 animate-spin rounded-full border-t-2 border-white"></div>
-                        {processingStep || "Processing..."}
+              ) : (
+                <form onSubmit={handleSubmit}>
+                  <CardContent className="space-y-6">
+                    <div className="space-y-2">
+                      <Label htmlFor="productType">Product Type</Label>
+                      <Select
+                        value={productType}
+                        onValueChange={setProductType}
+                        required
+                      >
+                        <SelectTrigger id="productType">
+                          <SelectValue placeholder="Select product type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {productTypes.map((type) => (
+                            <SelectItem key={type.value} value={type.value}>
+                              {type.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="quantity">Quantity</Label>
+                      <Input
+                        id="quantity"
+                        type="number"
+                        placeholder="Enter quantity"
+                        value={quantity}
+                        onChange={(e) => setQuantity(e.target.value)}
+                        min="1"
+                        required
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="specifications">Specifications</Label>
+                      <Textarea
+                        id="specifications"
+                        placeholder="Enter details about size, colors, material, etc."
+                        value={specifications}
+                        onChange={(e) => setSpecifications(e.target.value)}
+                        rows={4}
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="file">Upload Design File</Label>
+                      <div className="flex items-center justify-center border-2 border-dashed border-gray-300 rounded-lg p-6">
+                        <label className="w-full cursor-pointer">
+                          <div className="flex flex-col items-center">
+                            <Upload className="h-10 w-10 text-gray-400 mb-2" />
+                            <span className="text-gray-600 mb-1">
+                              {file ? file.name : "Click to upload or drag and drop"}
+                            </span>
+                            <span className="text-xs text-gray-500">
+                              PDF, PNG, JPG or AI (Max 20MB)
+                            </span>
+                          </div>
+                          <Input
+                            id="file"
+                            type="file"
+                            accept=".pdf,.png,.jpg,.jpeg,.ai"
+                            onChange={handleFileChange}
+                            className="hidden"
+                            required
+                          />
+                        </label>
                       </div>
-                    ) : (
-                      "Place Order"
-                    )}
-                  </Button>
-                </CardFooter>
-              </form>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="gstNumber">GST Number</Label>
+                      <Input
+                        id="gstNumber"
+                        placeholder="e.g., 05ABCDE1234F1Z1"
+                        value={gstNumber}
+                        onChange={(e) => setGstNumber(e.target.value)}
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="deliveryAddress">Delivery Address</Label>
+                      <Textarea
+                        id="deliveryAddress"
+                        placeholder="Enter full delivery address"
+                        value={deliveryAddress}
+                        onChange={(e) => setDeliveryAddress(e.target.value)}
+                        rows={3}
+                        required
+                      />
+                    </div>
+                  </CardContent>
+                  <CardFooter className="flex justify-between">
+                    <Button variant="outline" type="button" onClick={() => navigate(-1)}>
+                      Cancel
+                    </Button>
+                    <Button type="submit" disabled={loading}>
+                      {loading ? (
+                        <div className="flex items-center">
+                          <div className="mr-2 h-4 w-4 animate-spin rounded-full border-t-2 border-white"></div>
+                          {processingStep || "Processing..."}
+                        </div>
+                      ) : (
+                        "Place Order"
+                      )}
+                    </Button>
+                  </CardFooter>
+                </form>
+              )}
             </Card>
           </div>
 
@@ -366,9 +467,9 @@ export default function Order() {
                   <div className="flex">
                     <AlertCircle className="h-5 w-5 text-blue-500 mr-2 flex-shrink-0" />
                     <div className="text-sm text-blue-700">
-                      After placing your order, our team will review it and contact you for
-                      any clarifications. A detailed quotation will be provided for your
-                      approval.
+                      After placing your order, you will be directed to complete the 
+                      payment via our secure payment gateway. Once payment is completed, 
+                      we will generate an invoice and send it to your email.
                     </div>
                   </div>
                 </div>

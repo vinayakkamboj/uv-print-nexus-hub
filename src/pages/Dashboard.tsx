@@ -8,24 +8,34 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { formatDate, formatCurrency } from "@/lib/utils";
-import { ShoppingBag, FileText, Settings, Clock, Package, CheckCircle, Truck } from "lucide-react";
+import { ShoppingBag, FileText, Settings, Clock, Package, CheckCircle, Truck, CreditCard } from "lucide-react";
 
 // Define order and invoice types
 interface Order {
   id: string;
   productType: string;
   quantity: number;
-  status: "received" | "processing" | "printed" | "shipped";
+  status: "pending_payment" | "received" | "processing" | "printed" | "shipped";
   timestamp: any;
   totalAmount: number;
+  paymentDetails?: {
+    id: string;
+    paymentId?: string;
+    method?: string;
+    status: string;
+    timestamp: any;
+  };
 }
 
 interface Invoice {
   id: string;
+  invoiceId: string;
   orderId: string;
   createdAt: any;
   totalAmount: number;
   pdfUrl: string;
+  paymentId?: string;
+  paymentMethod?: string;
 }
 
 export default function Dashboard() {
@@ -75,6 +85,8 @@ export default function Dashboard() {
   // Get status color
   const getStatusColor = (status: string) => {
     switch (status) {
+      case "pending_payment":
+        return "bg-orange-100 text-orange-700";
       case "received":
         return "bg-blue-100 text-blue-700";
       case "processing":
@@ -91,6 +103,8 @@ export default function Dashboard() {
   // Get status icon
   const getStatusIcon = (status: string) => {
     switch (status) {
+      case "pending_payment":
+        return <CreditCard className="h-4 w-4" />;
       case "received":
         return <Clock className="h-4 w-4" />;
       case "processing":
@@ -102,6 +116,11 @@ export default function Dashboard() {
       default:
         return null;
     }
+  };
+
+  // Function to find the invoice for an order
+  const findInvoiceForOrder = (orderId: string) => {
+    return invoices.find(invoice => invoice.orderId === orderId);
   };
 
   return (
@@ -193,28 +212,48 @@ export default function Dashboard() {
                         <th className="text-left py-3 px-4 font-medium">Date</th>
                         <th className="text-left py-3 px-4 font-medium">Status</th>
                         <th className="text-left py-3 px-4 font-medium">Amount</th>
+                        <th className="text-left py-3 px-4 font-medium">Invoice</th>
                       </tr>
                     </thead>
                     <tbody>
                       {orders
                         .sort((a, b) => b.timestamp?.toMillis() - a.timestamp?.toMillis())
-                        .map((order) => (
-                          <tr key={order.id} className="border-b hover:bg-gray-50">
-                            <td className="py-3 px-4 font-mono text-sm">{order.id}</td>
-                            <td className="py-3 px-4">{order.productType}</td>
-                            <td className="py-3 px-4">{order.quantity}</td>
-                            <td className="py-3 px-4">
-                              {order.timestamp ? formatDate(order.timestamp.toDate()) : "N/A"}
-                            </td>
-                            <td className="py-3 px-4">
-                              <div className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(order.status)}`}>
-                                {getStatusIcon(order.status)}
-                                <span className="ml-1 capitalize">{order.status}</span>
-                              </div>
-                            </td>
-                            <td className="py-3 px-4">{formatCurrency(order.totalAmount)}</td>
-                          </tr>
-                        ))}
+                        .map((order) => {
+                          const orderInvoice = findInvoiceForOrder(order.id);
+                          return (
+                            <tr key={order.id} className="border-b hover:bg-gray-50">
+                              <td className="py-3 px-4 font-mono text-sm">{order.id}</td>
+                              <td className="py-3 px-4">{order.productType}</td>
+                              <td className="py-3 px-4">{order.quantity}</td>
+                              <td className="py-3 px-4">
+                                {order.timestamp ? formatDate(order.timestamp.toDate()) : "N/A"}
+                              </td>
+                              <td className="py-3 px-4">
+                                <div className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(order.status)}`}>
+                                  {getStatusIcon(order.status)}
+                                  <span className="ml-1 capitalize">
+                                    {order.status === "pending_payment" ? "Payment Pending" : order.status}
+                                  </span>
+                                </div>
+                              </td>
+                              <td className="py-3 px-4">{formatCurrency(order.totalAmount)}</td>
+                              <td className="py-3 px-4">
+                                {orderInvoice ? (
+                                  <a
+                                    href={orderInvoice.pdfUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-primary hover:underline font-medium"
+                                  >
+                                    View
+                                  </a>
+                                ) : (
+                                  <span className="text-gray-400">-</span>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        })}
                     </tbody>
                   </table>
                 </div>
@@ -249,6 +288,7 @@ export default function Dashboard() {
                         <th className="text-left py-3 px-4 font-medium">Order ID</th>
                         <th className="text-left py-3 px-4 font-medium">Date</th>
                         <th className="text-left py-3 px-4 font-medium">Amount</th>
+                        <th className="text-left py-3 px-4 font-medium">Payment Method</th>
                         <th className="text-left py-3 px-4 font-medium">Actions</th>
                       </tr>
                     </thead>
@@ -257,12 +297,13 @@ export default function Dashboard() {
                         .sort((a, b) => b.createdAt?.toMillis() - a.createdAt?.toMillis())
                         .map((invoice) => (
                           <tr key={invoice.id} className="border-b hover:bg-gray-50">
-                            <td className="py-3 px-4 font-mono text-sm">{invoice.id}</td>
+                            <td className="py-3 px-4 font-mono text-sm">{invoice.invoiceId || invoice.id}</td>
                             <td className="py-3 px-4 font-mono text-sm">{invoice.orderId}</td>
                             <td className="py-3 px-4">
                               {invoice.createdAt ? formatDate(invoice.createdAt.toDate()) : "N/A"}
                             </td>
                             <td className="py-3 px-4">{formatCurrency(invoice.totalAmount)}</td>
+                            <td className="py-3 px-4">{invoice.paymentMethod || "Online"}</td>
                             <td className="py-3 px-4">
                               <a
                                 href={invoice.pdfUrl}
