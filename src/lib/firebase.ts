@@ -4,6 +4,7 @@ import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 import { getAnalytics, isSupported } from "firebase/analytics";
+import { getFunctions } from "firebase/functions";
 
 const firebaseConfig = {
   // IMPORTANT: Replace with your Firebase configuration
@@ -18,12 +19,12 @@ const firebaseConfig = {
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
-const analytics = getAnalytics(app);
 
 // Initialize Firebase services
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 export const storage = getStorage(app);
+export const functions = getFunctions(app);
 
 // Initialize Analytics conditionally (browser only)
 export const initAnalytics = async () => {
@@ -34,6 +35,12 @@ export const initAnalytics = async () => {
     }
   }
   return null;
+};
+
+// Utility function to check if we're in a production environment
+export const isProduction = () => {
+  return window.location.hostname !== 'localhost' && 
+         !window.location.hostname.includes('127.0.0.1');
 };
 
 export default app;

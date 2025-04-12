@@ -8,7 +8,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { formatDate, formatCurrency } from "@/lib/utils";
-import { ShoppingBag, FileText, Settings, Clock, Package, CheckCircle, Truck } from "lucide-react";
+import { ShoppingBag, FileText, Settings, Clock, Package, CheckCircle, Truck, Download, Mail } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 // Define order and invoice types
 interface Order {
@@ -25,11 +26,14 @@ interface Invoice {
   orderId: string;
   createdAt: any;
   totalAmount: number;
-  pdfUrl: string;
+  pdfUrl?: string;
+  status: "generated" | "sent" | "paid";
+  sentToCustomer: boolean;
 }
 
 export default function Dashboard() {
   const { userData } = useAuth();
+  const { toast } = useToast();
   const [orders, setOrders] = useState<Order[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
@@ -83,6 +87,12 @@ export default function Dashboard() {
         return "bg-purple-100 text-purple-700";
       case "shipped":
         return "bg-green-100 text-green-700";
+      case "generated":
+        return "bg-blue-100 text-blue-700";
+      case "sent":
+        return "bg-teal-100 text-teal-700";
+      case "paid":
+        return "bg-green-100 text-green-700";
       default:
         return "bg-gray-100 text-gray-700";
     }
@@ -99,19 +109,56 @@ export default function Dashboard() {
         return <CheckCircle className="h-4 w-4" />;
       case "shipped":
         return <Truck className="h-4 w-4" />;
+      case "generated":
+        return <FileText className="h-4 w-4" />;
+      case "sent":
+        return <Mail className="h-4 w-4" />;
+      case "paid":
+        return <CheckCircle className="h-4 w-4" />;
       default:
         return null;
     }
   };
 
+  const requestInvoiceEmail = async (invoiceId: string) => {
+    try {
+      setLoading(true);
+      
+      await fetch(`https://us-central1-micro-uv-printers.cloudfunctions.net/resendInvoice`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          invoiceId,
+          email: userData?.email
+        }),
+      });
+      
+      toast({
+        title: "Success",
+        description: "Invoice has been sent to your email.",
+      });
+    } catch (error) {
+      console.error("Error requesting invoice:", error);
+      toast({
+        title: "Error", 
+        description: "Failed to send invoice to your email. Please try again.",
+        variant: "destructive"
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="container-custom py-12">
-      <h1 className="text-3xl font-bold mb-2">Dashboard</h1>
+      <h1 className="text-3xl font-bold mb-2 animate-fade-in">Dashboard</h1>
       <p className="text-gray-600 mb-8">Welcome back, {userData?.name} Ji</p>
 
       {/* Quick Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <Card>
+        <Card className="transition-transform duration-300 hover:scale-105">
           <CardHeader className="pb-2">
             <CardTitle className="text-lg font-medium">Total Orders</CardTitle>
             <CardDescription>All-time orders placed</CardDescription>
@@ -124,7 +171,7 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="transition-transform duration-300 hover:scale-105">
           <CardHeader className="pb-2">
             <CardTitle className="text-lg font-medium">Pending Orders</CardTitle>
             <CardDescription>Orders in progress</CardDescription>
@@ -139,7 +186,7 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="transition-transform duration-300 hover:scale-105">
           <CardHeader className="pb-2">
             <CardTitle className="text-lg font-medium">Invoices</CardTitle>
             <CardDescription>Total invoices generated</CardDescription>
@@ -168,12 +215,12 @@ export default function Dashboard() {
         </TabsList>
 
         <TabsContent value="orders">
-          <Card>
+          <Card className="animate-fade-in">
             <CardHeader>
               <div className="flex justify-between items-center">
                 <CardTitle>Recent Orders</CardTitle>
                 <Link to="/order">
-                  <Button>New Order</Button>
+                  <Button className="transition-transform duration-300 hover:scale-105">New Order</Button>
                 </Link>
               </div>
             </CardHeader>
@@ -199,7 +246,7 @@ export default function Dashboard() {
                       {orders
                         .sort((a, b) => b.timestamp?.toMillis() - a.timestamp?.toMillis())
                         .map((order) => (
-                          <tr key={order.id} className="border-b hover:bg-gray-50">
+                          <tr key={order.id} className="border-b hover:bg-gray-50 transition-colors duration-300">
                             <td className="py-3 px-4 font-mono text-sm">{order.id}</td>
                             <td className="py-3 px-4">{order.productType}</td>
                             <td className="py-3 px-4">{order.quantity}</td>
@@ -222,7 +269,7 @@ export default function Dashboard() {
                 <div className="text-center py-8">
                   <p className="text-gray-500 mb-4">You haven't placed any orders yet.</p>
                   <Link to="/order">
-                    <Button>Place Your First Order</Button>
+                    <Button className="transition-transform duration-300 hover:scale-105">Place Your First Order</Button>
                   </Link>
                 </div>
               )}
@@ -231,9 +278,10 @@ export default function Dashboard() {
         </TabsContent>
 
         <TabsContent value="invoices">
-          <Card>
+          <Card className="animate-fade-in">
             <CardHeader>
-              <CardTitle>Invoice History</CardTitle>
+              <CardTitle>E-Invoice History</CardTitle>
+              <CardDescription>View and download all your invoices</CardDescription>
             </CardHeader>
             <CardContent>
               {loading ? (
@@ -249,6 +297,7 @@ export default function Dashboard() {
                         <th className="text-left py-3 px-4 font-medium">Order ID</th>
                         <th className="text-left py-3 px-4 font-medium">Date</th>
                         <th className="text-left py-3 px-4 font-medium">Amount</th>
+                        <th className="text-left py-3 px-4 font-medium">Status</th>
                         <th className="text-left py-3 px-4 font-medium">Actions</th>
                       </tr>
                     </thead>
@@ -256,7 +305,7 @@ export default function Dashboard() {
                       {invoices
                         .sort((a, b) => b.createdAt?.toMillis() - a.createdAt?.toMillis())
                         .map((invoice) => (
-                          <tr key={invoice.id} className="border-b hover:bg-gray-50">
+                          <tr key={invoice.id} className="border-b hover:bg-gray-50 transition-colors duration-300">
                             <td className="py-3 px-4 font-mono text-sm">{invoice.id}</td>
                             <td className="py-3 px-4 font-mono text-sm">{invoice.orderId}</td>
                             <td className="py-3 px-4">
@@ -264,14 +313,30 @@ export default function Dashboard() {
                             </td>
                             <td className="py-3 px-4">{formatCurrency(invoice.totalAmount)}</td>
                             <td className="py-3 px-4">
-                              <a
-                                href={invoice.pdfUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-primary hover:underline font-medium"
-                              >
-                                Download PDF
-                              </a>
+                              <div className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(invoice.status || 'generated')}`}>
+                                {getStatusIcon(invoice.status || 'generated')}
+                                <span className="ml-1 capitalize">{invoice.status || 'generated'}</span>
+                              </div>
+                            </td>
+                            <td className="py-3 px-4">
+                              <div className="flex space-x-2">
+                                {invoice.pdfUrl ? (
+                                  <a
+                                    href={invoice.pdfUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center text-primary hover:text-primary/80 font-medium transition-colors"
+                                  >
+                                    <Download className="h-4 w-4 mr-1" /> Download
+                                  </a>
+                                ) : null}
+                                <button
+                                  onClick={() => requestInvoiceEmail(invoice.id)}
+                                  className="inline-flex items-center text-blue-600 hover:text-blue-800 font-medium transition-colors"
+                                >
+                                  <Mail className="h-4 w-4 mr-1" /> Email
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         ))}

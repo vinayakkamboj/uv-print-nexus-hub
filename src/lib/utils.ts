@@ -48,3 +48,26 @@ export function generateId(length: number = 8): string {
   }
   return result;
 }
+
+// Generate invoice number
+export function generateInvoiceNumber(orderId: string): string {
+  const date = new Date();
+  const year = date.getFullYear().toString().slice(2);
+  const month = (date.getMonth() + 1).toString().padStart(2, '0');
+  const random = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+  
+  return `INV-${year}${month}-${random}-${orderId.slice(0, 4)}`;
+}
+
+// Calculate tax (GST)
+export function calculateTax(amount: number, rate: number = 18): number {
+  return (amount * rate) / 100;
+}
+
+// Add CSS animation classes to index.css
+export const animations = {
+  fadeIn: 'animate-fade-in',
+  slideUp: 'animate-slide-up',
+  slideUpSlow: 'animate-slide-up-slow',
+  pulseLight: 'animate-pulse-light',
+};
