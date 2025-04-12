@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -33,6 +34,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { generateId, isValidGSTIN } from "@/lib/utils";
 import { AlertCircle, Upload } from "lucide-react";
+import { createAndSendInvoice } from "@/lib/invoice-service";
 
 const productTypes = [
   { value: "sticker", label: "Stickers & Labels" },
@@ -54,6 +56,7 @@ export default function Order() {
   const [gstNumber, setGstNumber] = useState(userData?.gstNumber || "");
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
+  const [processingStep, setProcessingStep] = useState("");
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -109,6 +112,7 @@ export default function Order() {
 
     try {
       setLoading(true);
+      setProcessingStep("Checking existing orders...");
 
       // 🔎 Check if any previous orders are pending
       const orderQuery = query(
@@ -130,6 +134,7 @@ export default function Order() {
       }
 
       // Proceed to upload file and place order
+      setProcessingStep("Uploading your design file...");
       const fileId = generateId();
       const fileExtension = file.name.split(".").pop();
       const storageRef = ref(
@@ -142,6 +147,7 @@ export default function Order() {
 
       const estimatedPrice = calculateEstimatedPrice();
 
+      setProcessingStep("Creating your order...");
       const orderData = {
         userId: user?.uid,
         productType,
@@ -154,13 +160,30 @@ export default function Order() {
         status: "received",
         totalAmount: estimatedPrice,
         timestamp: serverTimestamp(),
+        customerName: userData?.name || "Customer",
+        customerEmail: userData?.email || "",
       };
 
       const orderRef = await addDoc(collection(db, "orders"), orderData);
+      
+      // Generate and send invoice
+      setProcessingStep("Generating invoice...");
+      const invoiceResult = await createAndSendInvoice({
+        ...orderData,
+        id: orderRef.id,
+      });
 
+      setProcessingStep("Finishing up...");
+      
+      let toastDescription = `Your order #${orderRef.id} has been received and is being processed.`;
+      
+      if (invoiceResult.success) {
+        toastDescription += " An invoice has been generated and sent to your email.";
+      }
+      
       toast({
         title: "Order Placed Successfully",
-        description: `Your order #${orderRef.id} has been received and is being processed.`,
+        description: toastDescription,
       });
 
       navigate("/dashboard");
@@ -174,6 +197,7 @@ export default function Order() {
       });
     } finally {
       setLoading(false);
+      setProcessingStep("");
     }
   };
 
@@ -294,7 +318,14 @@ export default function Order() {
                     Cancel
                   </Button>
                   <Button type="submit" disabled={loading}>
-                    {loading ? "Submitting..." : "Place Order"}
+                    {loading ? (
+                      <div className="flex items-center">
+                        <div className="mr-2 h-4 w-4 animate-spin rounded-full border-t-2 border-white"></div>
+                        {processingStep || "Processing..."}
+                      </div>
+                    ) : (
+                      "Place Order"
+                    )}
                   </Button>
                 </CardFooter>
               </form>
