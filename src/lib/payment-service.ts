@@ -89,7 +89,7 @@ export const processPayment = (
     
     if (demoMode) {
       console.log("Using simulated payment process (DEMO MODE)");
-      // Simulate a 2-second delay to mimic payment processing
+      // Simulate a short delay to mimic payment processing
       setTimeout(() => {
         const mockPaymentId = `pay_${Math.random().toString(36).substring(2, 15)}`;
         
@@ -105,12 +105,11 @@ export const processPayment = (
         
         console.log("Payment simulation completed:", paymentDetails);
         resolve(paymentDetails);
-      }, 1000); // Reduced timeout to 1 second for faster testing
+      }, 500); // Even shorter timeout for faster testing
       
       return;
     }
     
-    // Only execute this code if demoMode is false
     // First check if Razorpay is available
     if (typeof window.Razorpay === 'undefined') {
       console.error("Razorpay is not initialized");
@@ -121,7 +120,7 @@ export const processPayment = (
     console.log("Opening Razorpay payment window...");
     
     const options = {
-      key: process.env.RAZORPAY_KEY_ID || "", // Use environment variable
+      key: process.env.RAZORPAY_KEY_ID || "rzp_test_1DP5mmOlF5G5ag", // Use environment variable or fallback to test key
       amount: orderDetails.amount * 100, // Razorpay expects amount in paise
       currency: orderDetails.currency,
       name: 'Micro UV Printers',

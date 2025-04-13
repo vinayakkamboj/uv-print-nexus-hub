@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -27,6 +28,7 @@ import { generateId, isValidGSTIN } from "@/lib/utils";
 import { AlertCircle, Upload, Download } from "lucide-react";
 import { createOrder, updateOrderAfterPayment, createAndSendInvoice } from "@/lib/invoice-service";
 import { initializeRazorpay, createRazorpayOrder, processPayment } from "@/lib/payment-service";
+import { Progress } from "@/components/ui/progress";
 
 const productTypes = [
   { value: "sticker", label: "Stickers & Labels" },
@@ -56,7 +58,9 @@ export default function Order() {
   const [deliveryAddress, setDeliveryAddress] = useState("");
   const [gstNumber, setGstNumber] = useState(userData?.gstNumber || "");
   const [file, setFile] = useState<File | null>(null);
+  const [filePreview, setFilePreview] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [processingStep, setProcessingStep] = useState("");
   const [orderId, setOrderId] = useState<string | null>(null);
   const [paymentProcessing, setPaymentProcessing] = useState(false);
@@ -72,25 +76,34 @@ export default function Order() {
   }, [userData]);
 
   useEffect(() => {
+    // Initialize Razorpay when the component mounts
     initializeRazorpay()
       .then((success) => {
         if (!success) {
-          console.error("Razorpay SDK failed to load");
-          toast({
-            title: "Warning",
-            description: "Payment gateway could not be initialized. You may experience issues during checkout.",
-            variant: "destructive",
-          });
+          console.log("Razorpay SDK failed to load - this is fine in demo mode");
         }
       })
       .catch(error => {
         console.error("Error initializing Razorpay:", error);
       });
-  }, [toast]);
+  }, []);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
-      setFile(e.target.files[0]);
+      const selectedFile = e.target.files[0];
+      setFile(selectedFile);
+      
+      // Create a preview URL for the file if it's an image
+      if (selectedFile.type.startsWith('image/')) {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          setFilePreview(event.target?.result as string);
+        };
+        reader.readAsDataURL(selectedFile);
+      } else {
+        // For non-image files, just show the file name
+        setFilePreview(null);
+      }
     }
   };
 
@@ -108,6 +121,23 @@ export default function Order() {
     if (qty <= 500) return basePrice * 1.5;
     if (qty <= 1000) return basePrice * 2;
     return basePrice * 3;
+  };
+
+  const simulateProgress = (startAt: number, endAt: number, duration: number) => {
+    const start = Date.now();
+    const updateProgress = () => {
+      const elapsed = Date.now() - start;
+      const progress = startAt + (elapsed / duration) * (endAt - startAt);
+      
+      if (progress <= endAt) {
+        setUploadProgress(Math.min(progress, endAt));
+        requestAnimationFrame(updateProgress);
+      } else {
+        setUploadProgress(endAt);
+      }
+    };
+    
+    requestAnimationFrame(updateProgress);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -154,27 +184,45 @@ export default function Order() {
     try {
       setLoading(true);
       setProcessingStep("Processing your order...");
-
+      setUploadProgress(5);
+      
       // Prepare for file upload (actual or simulated)
       let fileUrl = "";
+      
+      // Start progress simulation for better UX
+      simulateProgress(5, 40, 1000);
       
       // In demo mode, we'll skip the firebase operations
       if (process.env.RAZORPAY_DEMO_MODE === 'true') {
         console.log("Demo mode - simulating file upload");
-        fileUrl = URL.createObjectURL(file);
-        await new Promise(resolve => setTimeout(resolve, 500)); // Simulate delay
+        await new Promise(resolve => setTimeout(resolve, 800)); // Simulate delay
+        
+        // Create a blob URL as a placeholder
+        const blob = new Blob([file], { type: file.type });
+        fileUrl = URL.createObjectURL(blob);
+        console.log("Created local file URL:", fileUrl);
+        
+        simulateProgress(40, 60, 500); // Continue progress
       } else {
         // Attempt to upload file to Firebase Storage
         try {
           setProcessingStep("Uploading your design file...");
-          const storageRef = ref(storage, `designs/${user?.uid}/${Date.now()}_${file.name}`);
+          const fileExtension = file.name.split('.').pop();
+          const uniqueFileName = `${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${fileExtension}`;
+          const storageRef = ref(storage, `designs/${user?.uid}/${uniqueFileName}`);
+          
+          // Upload the file
           const uploadResult = await uploadBytes(storageRef, file);
           fileUrl = await getDownloadURL(uploadResult.ref);
-          console.log("File uploaded, URL:", fileUrl);
+          console.log("File uploaded to Firebase, URL:", fileUrl);
+          
+          setUploadProgress(60);
         } catch (uploadError) {
-          console.error("Error uploading file:", uploadError);
-          // Create a local URL as fallback
-          fileUrl = URL.createObjectURL(file);
+          console.error("Error uploading file to Firebase:", uploadError);
+          
+          // Fallback to local URL if Firebase upload fails
+          const blob = new Blob([file], { type: file.type });
+          fileUrl = URL.createObjectURL(blob);
           console.log("Using local URL instead:", fileUrl);
           
           toast({
@@ -184,6 +232,8 @@ export default function Order() {
           });
         }
       }
+      
+      simulateProgress(60, 75, 500); // Continue progress
       
       const estimatedPrice = calculateEstimatedPrice();
       
@@ -205,23 +255,26 @@ export default function Order() {
         customerEmail: userData?.email || "demo@example.com",
         hsnCode,
       };
+      
+      simulateProgress(75, 90, 500); // Continue progress
 
       // Create initial order
       const orderResult = await createOrder(orderData);
       
       if (!orderResult.success || !orderResult.orderId) {
-        throw new Error(orderResult.message);
+        throw new Error(orderResult.message || "Failed to create order");
       }
       
       setOrderId(orderResult.orderId);
+      setUploadProgress(100);
 
       // Now proceed to payment
-      setProcessingStep("Initiating payment...");
+      setProcessingStep("Order created successfully. Ready for payment.");
       setLoading(false);
       
       toast({
         title: "Order Created",
-        description: "Proceed to payment to complete your order.",
+        description: "Your order has been created. Proceed to payment to complete your order.",
       });
       
       // Start payment process
@@ -231,12 +284,12 @@ export default function Order() {
       console.error("Error placing order:", error);
       toast({
         title: "Error",
-        description:
-          "There was a problem submitting your order. Please try again.",
+        description: "There was a problem submitting your order. Please try again.",
         variant: "destructive",
       });
       setLoading(false);
       setProcessingStep("");
+      setUploadProgress(0);
     }
   };
 
@@ -302,14 +355,13 @@ export default function Order() {
       
       // Reset loading state but don't navigate yet to allow download
       setPaymentProcessing(false);
-      setProcessingStep("");
       
     } catch (error) {
       console.error("Payment processing error:", error);
       
       toast({
         title: "Payment Failed",
-        description: "There was an issue with the payment. Please try again or contact support.",
+        description: error instanceof Error ? error.message : "There was an issue with the payment. Please try again.",
         variant: "destructive",
       });
       
@@ -397,11 +449,19 @@ export default function Order() {
               ) : (
                 <form onSubmit={handleSubmit}>
                   <CardContent className="space-y-6">
+                    {loading && (
+                      <div className="mb-4">
+                        <p className="text-sm font-medium mb-2">{processingStep}</p>
+                        <Progress value={uploadProgress} className="h-2" />
+                      </div>
+                    )}
+                    
                     <div className="space-y-2">
                       <Label htmlFor="productType">Product Type</Label>
                       <Select
                         value={productType}
                         onValueChange={setProductType}
+                        disabled={loading}
                         required
                       >
                         <SelectTrigger id="productType">
@@ -426,6 +486,7 @@ export default function Order() {
                         value={quantity}
                         onChange={(e) => setQuantity(e.target.value)}
                         min="1"
+                        disabled={loading}
                         required
                       />
                     </div>
@@ -438,16 +499,21 @@ export default function Order() {
                         value={specifications}
                         onChange={(e) => setSpecifications(e.target.value)}
                         rows={4}
+                        disabled={loading}
                       />
                     </div>
 
                     <div className="space-y-2">
                       <Label htmlFor="file">Upload Design File</Label>
-                      <div className="flex items-center justify-center border-2 border-dashed border-gray-300 rounded-lg p-6">
-                        <label className="w-full cursor-pointer">
+                      <div className={`flex items-center justify-center border-2 border-dashed ${loading ? 'border-gray-200 bg-gray-50' : 'border-gray-300'} rounded-lg p-6`}>
+                        <label className={`w-full ${loading ? '' : 'cursor-pointer'}`}>
                           <div className="flex flex-col items-center">
-                            <Upload className="h-10 w-10 text-gray-400 mb-2" />
-                            <span className="text-gray-600 mb-1">
+                            {filePreview ? (
+                              <img src={filePreview} alt="Preview" className="h-24 object-contain mb-2" />
+                            ) : (
+                              <Upload className="h-10 w-10 text-gray-400 mb-2" />
+                            )}
+                            <span className="text-gray-600 mb-1 text-center">
                               {file ? file.name : "Click to upload or drag and drop"}
                             </span>
                             <span className="text-xs text-gray-500">
@@ -460,6 +526,7 @@ export default function Order() {
                             accept=".pdf,.png,.jpg,.jpeg,.ai"
                             onChange={handleFileChange}
                             className="hidden"
+                            disabled={loading}
                             required
                           />
                         </label>
@@ -473,6 +540,7 @@ export default function Order() {
                         placeholder="e.g., 05ABCDE1234F1Z1"
                         value={gstNumber}
                         onChange={(e) => setGstNumber(e.target.value)}
+                        disabled={loading}
                       />
                     </div>
 
@@ -484,19 +552,20 @@ export default function Order() {
                         value={deliveryAddress}
                         onChange={(e) => setDeliveryAddress(e.target.value)}
                         rows={3}
+                        disabled={loading}
                         required
                       />
                     </div>
                   </CardContent>
                   <CardFooter className="flex justify-between">
-                    <Button variant="outline" type="button" onClick={() => navigate(-1)}>
+                    <Button variant="outline" type="button" onClick={() => navigate(-1)} disabled={loading}>
                       Cancel
                     </Button>
                     <Button type="submit" disabled={loading}>
                       {loading ? (
                         <div className="flex items-center">
                           <div className="mr-2 h-4 w-4 animate-spin rounded-full border-t-2 border-white"></div>
-                          {processingStep || "Processing..."}
+                          Processing...
                         </div>
                       ) : (
                         "Place Order"
