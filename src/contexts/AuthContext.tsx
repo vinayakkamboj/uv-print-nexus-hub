@@ -1,4 +1,3 @@
-
 import { createContext, useContext, useEffect, useState } from "react";
 import { 
   User, 
@@ -19,6 +18,7 @@ type UserData = {
   phone: string;
   gstNumber: string;
   createdAt: any;
+  address?: string; // Add address as an optional property
 }
 
 interface AuthContextProps {

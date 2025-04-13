@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -32,15 +31,21 @@ interface Order {
   };
 }
 
-interface Invoice {
+// Interface for OrderData from invoice-service
+interface OrderData {
   id: string;
-  invoiceId: string;
-  orderId: string;
-  createdAt: any;
+  productType: string;
+  quantity: number;
+  status: string; // This needs to be cast to the appropriate type
+  timestamp: any;
   totalAmount: number;
-  pdfUrl: string;
-  paymentId?: string;
-  paymentMethod?: string;
+  paymentDetails?: {
+    id: string;
+    paymentId?: string;
+    method?: string;
+    status: string;
+    timestamp: any;
+  };
 }
 
 export default function Dashboard() {
@@ -78,7 +83,14 @@ export default function Dashboard() {
         
         // Use the new getUserOrders function to fetch all orders for this user
         const ordersData = await getUserOrders(userData.uid);
-        setOrders(ordersData);
+        
+        // Map OrderData to Order with the correct status type
+        const typedOrders = ordersData.map(order => ({
+          ...order,
+          status: order.status as "pending_payment" | "received" | "processing" | "printed" | "shipped"
+        }));
+        
+        setOrders(typedOrders);
 
         // Fetch invoices
         const invoicesQuery = query(

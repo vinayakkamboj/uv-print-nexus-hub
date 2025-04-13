@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -54,7 +53,7 @@ export default function Order() {
   const [productType, setProductType] = useState("");
   const [quantity, setQuantity] = useState("");
   const [specifications, setSpecifications] = useState("");
-  const [deliveryAddress, setDeliveryAddress] = useState(userData?.address || "");
+  const [deliveryAddress, setDeliveryAddress] = useState("");
   const [gstNumber, setGstNumber] = useState(userData?.gstNumber || "");
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
