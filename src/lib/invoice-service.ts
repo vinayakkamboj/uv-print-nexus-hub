@@ -1,4 +1,3 @@
-
 // src/lib/invoice-service.ts
 import { generateInvoicePDF, InvoiceData } from "./invoice-generator";
 import { sendInvoiceEmail } from "./email-service";
@@ -6,6 +5,9 @@ import { generateId } from "./utils";
 import { PaymentDetails } from "./payment-service";
 import { db } from "./firebase";
 import { collection, addDoc, serverTimestamp, doc, updateDoc, where, query, getDocs, orderBy } from "firebase/firestore";
+
+// Use import.meta.env instead of process.env for Vite apps
+const DEMO_MODE = import.meta.env.VITE_RAZORPAY_DEMO_MODE === 'true';
 
 export interface OrderData {
   id: string;
@@ -32,7 +34,7 @@ export const createOrder = async (orderData: Omit<OrderData, "id">): Promise<{
     console.log("Creating order with data:", orderData);
     
     // Check if we're in demo mode (no Firebase writes)
-    if (process.env.RAZORPAY_DEMO_MODE === 'true') {
+    if (DEMO_MODE) {
       // Generate a simulated order ID
       const mockOrderId = `order_${generateId(12)}`;
       console.log("Order created with ID (DEMO MODE):", mockOrderId);
@@ -90,7 +92,7 @@ export const updateOrderAfterPayment = async (orderId: string, paymentDetails: P
     console.log("Updating order after payment:", { orderId, paymentDetails });
     
     // Check if we're in demo mode (no Firebase writes)
-    if (process.env.RAZORPAY_DEMO_MODE === 'true') {
+    if (DEMO_MODE) {
       console.log("Order updated with payment details (DEMO MODE)");
       return {
         success: true,
@@ -190,7 +192,9 @@ export const createAndSendInvoice = async (orderData: OrderData, paymentDetails:
     let pdfUrl = mockPdfUrl;
     
     // Check if we're in demo mode (no Firebase writes)
-    if (process.env.RAZORPAY_DEMO_MODE !== 'true') {
+    if (DEMO_MODE) {
+      console.log("Invoice would be stored in database (DEMO MODE)");
+    } else {
       try {
         // Store invoice data in Firestore
         const invoiceRef = await addDoc(collection(db, "invoices"), {
@@ -211,8 +215,6 @@ export const createAndSendInvoice = async (orderData: OrderData, paymentDetails:
         console.error("Firebase error storing invoice:", firebaseError);
         // Continue even if storing in Firebase fails
       }
-    } else {
-      console.log("Invoice would be stored in database (DEMO MODE)");
     }
     
     console.log("Sending invoice email...");
@@ -259,7 +261,7 @@ export const createAndSendInvoice = async (orderData: OrderData, paymentDetails:
 // Function to fetch all orders for a user
 export const getUserOrders = async (userId: string): Promise<OrderData[]> => {
   try {
-    if (process.env.RAZORPAY_DEMO_MODE === 'true') {
+    if (DEMO_MODE) {
       // Return mock data in demo mode
       return [
         {
@@ -321,7 +323,7 @@ export const getUserOrders = async (userId: string): Promise<OrderData[]> => {
 // Function to get invoices for an order
 export const getInvoicesForOrder = async (orderId: string): Promise<any[]> => {
   try {
-    if (process.env.RAZORPAY_DEMO_MODE === 'true') {
+    if (DEMO_MODE) {
       // Return mock data in demo mode
       return [{
         id: `inv_${generateId(8)}`,

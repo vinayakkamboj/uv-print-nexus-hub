@@ -16,6 +16,10 @@ export interface PaymentDetails {
   method?: string;
 }
 
+// Use import.meta.env instead of process.env for Vite apps
+const DEMO_MODE = import.meta.env.VITE_RAZORPAY_DEMO_MODE === 'true';
+const RAZORPAY_KEY_ID = import.meta.env.VITE_RAZORPAY_KEY_ID || "rzp_test_1DP5mmOlF5G5ag";
+
 export const initializeRazorpay = (): Promise<boolean> => {
   return new Promise((resolve) => {
     // Check if Razorpay is already loaded
@@ -85,9 +89,8 @@ export const processPayment = (
     console.log("Processing payment with Razorpay...");
     
     // Check if we should use a real Razorpay integration or simulate payment
-    const demoMode = process.env.RAZORPAY_DEMO_MODE === 'true';
-    
-    if (demoMode) {
+    // Using constant DEMO_MODE instead of accessing process.env directly
+    if (DEMO_MODE) {
       console.log("Using simulated payment process (DEMO MODE)");
       // Simulate a short delay to mimic payment processing
       setTimeout(() => {
@@ -120,7 +123,7 @@ export const processPayment = (
     console.log("Opening Razorpay payment window...");
     
     const options = {
-      key: process.env.RAZORPAY_KEY_ID || "rzp_test_1DP5mmOlF5G5ag", // Use environment variable or fallback to test key
+      key: RAZORPAY_KEY_ID, // Use constant instead of accessing process.env directly
       amount: orderDetails.amount * 100, // Razorpay expects amount in paise
       currency: orderDetails.currency,
       name: 'Micro UV Printers',
