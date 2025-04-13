@@ -105,7 +105,7 @@ export const processPayment = (
         
         console.log("Payment simulation completed:", paymentDetails);
         resolve(paymentDetails);
-      }, 2000);
+      }, 1000); // Reduced timeout to 1 second for faster testing
       
       return;
     }

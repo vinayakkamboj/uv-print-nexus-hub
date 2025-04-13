@@ -5,7 +5,7 @@ import { sendInvoiceEmail } from "./email-service";
 import { generateId } from "./utils";
 import { PaymentDetails } from "./payment-service";
 import { db } from "./firebase";
-import { collection, addDoc, serverTimestamp, doc, updateDoc, where, query, getDocs } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp, doc, updateDoc, where, query, getDocs, orderBy } from "firebase/firestore";
 
 export interface OrderData {
   id: string;
@@ -256,7 +256,7 @@ export const createAndSendInvoice = async (orderData: OrderData, paymentDetails:
   }
 };
 
-// New function to fetch all orders for a user
+// Function to fetch all orders for a user
 export const getUserOrders = async (userId: string): Promise<OrderData[]> => {
   try {
     if (process.env.RAZORPAY_DEMO_MODE === 'true') {
@@ -292,7 +292,8 @@ export const getUserOrders = async (userId: string): Promise<OrderData[]> => {
     // Query orders collection for all orders with matching userId
     const ordersQuery = query(
       collection(db, "orders"),
-      where("userId", "==", userId)
+      where("userId", "==", userId),
+      orderBy("timestamp", "desc") // Add ordering by timestamp
     );
     
     const ordersSnapshot = await getDocs(ordersQuery);
@@ -313,6 +314,49 @@ export const getUserOrders = async (userId: string): Promise<OrderData[]> => {
     return orders;
   } catch (error) {
     console.error("Error fetching user orders:", error);
+    return [];
+  }
+};
+
+// Function to get invoices for an order
+export const getInvoicesForOrder = async (orderId: string): Promise<any[]> => {
+  try {
+    if (process.env.RAZORPAY_DEMO_MODE === 'true') {
+      // Return mock data in demo mode
+      return [{
+        id: `inv_${generateId(8)}`,
+        invoiceId: `INV-${generateId(8).toUpperCase()}`,
+        orderId,
+        createdAt: new Date(),
+        totalAmount: 1500,
+        pdfUrl: `https://example.com/invoices/INV-${generateId(8).toUpperCase()}.pdf`,
+      }];
+    }
+    
+    // Query invoices collection for all invoices with matching orderId
+    const invoicesQuery = query(
+      collection(db, "invoices"),
+      where("orderId", "==", orderId)
+    );
+    
+    const invoicesSnapshot = await getDocs(invoicesQuery);
+    
+    if (invoicesSnapshot.empty) {
+      console.log("No invoices found for order:", orderId);
+      return [];
+    }
+    
+    // Convert snapshot to array
+    const invoices = invoicesSnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+    
+    console.log(`Found ${invoices.length} invoices for order:`, orderId);
+    
+    return invoices;
+  } catch (error) {
+    console.error("Error fetching invoices for order:", error);
     return [];
   }
 };

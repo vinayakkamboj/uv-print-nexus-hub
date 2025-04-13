@@ -1,6 +1,7 @@
+
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Printer, Package, Truck, CheckCircle, Building, BookOpen, School } from "lucide-react";
+import { ArrowRight, Printer, Package, Truck, CheckCircle, Building, BookOpen, School, Clock } from "lucide-react";
 import printerImg from '../assets/factoryprinting.jpeg';
 import uvPrinting from '../assets/uvprinting.jpg';
 import tags from '../assets/tags.jpg';
@@ -38,6 +39,11 @@ export default function Index() {
               <Link to="/portfolio">
                 <Button className="bg-white text-primary hover:bg-gray-100 transition-colors">
                   View Portfolio
+                </Button>
+              </Link>
+              <Link to="/coming-soon">
+                <Button className="bg-red-600 text-white hover:bg-red-700 transition-colors">
+                  <Clock className="mr-2 h-4 w-4" /> 10 Minute Delivery
                 </Button>
               </Link>
             </div>
@@ -258,6 +264,11 @@ export default function Index() {
                 </Link>
                 <Link to="/order">
                   <Button variant="outline">Place an Order</Button>
+                </Link>
+                <Link to="/coming-soon">
+                  <Button variant="outline" className="flex items-center gap-2 bg-red-100 text-red-700 hover:bg-red-200 border-red-300">
+                    <Clock className="h-4 w-4" /> 10 Minute Delivery Coming Soon
+                  </Button>
                 </Link>
               </div>
             </div>
