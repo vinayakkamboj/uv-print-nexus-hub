@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -29,6 +30,19 @@ interface Order {
     status: string;
     timestamp: any;
   };
+}
+
+// Define Invoice interface
+interface Invoice {
+  id: string;
+  invoiceId?: string;
+  orderId: string;
+  createdAt: any;
+  totalAmount: number;
+  pdfUrl: string;
+  paymentId?: string;
+  paymentMethod?: string;
+  userId?: string;
 }
 
 // Interface for OrderData from invoice-service
@@ -84,10 +98,12 @@ export default function Dashboard() {
         // Use the new getUserOrders function to fetch all orders for this user
         const ordersData = await getUserOrders(userData.uid);
         
-        // Map OrderData to Order with the correct status type
+        // Map OrderData to Order with the correct status type and ensure timestamp is handled properly
         const typedOrders = ordersData.map(order => ({
           ...order,
-          status: order.status as "pending_payment" | "received" | "processing" | "printed" | "shipped"
+          status: order.status as "pending_payment" | "received" | "processing" | "printed" | "shipped",
+          // Ensure timestamp exists (use empty object as fallback if undefined)
+          timestamp: order.timestamp || {}
         }));
         
         setOrders(typedOrders);
