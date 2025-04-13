@@ -98,7 +98,7 @@ export default function Navbar() {
         <div className="flex items-center justify-between p-4 border-b">
           <Link to="/" className="flex items-center" onClick={() => setMobileMenuOpen(false)}>
             <img
-              src="/logo.png"
+              src={Logo}
               alt="Micro UV Printers"
               className="h-8 w-auto"
             />
