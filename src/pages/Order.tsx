@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -24,7 +25,7 @@ import {
 } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { generateId, isValidGSTIN } from "@/lib/utils";
-import { AlertCircle, Upload } from "lucide-react";
+import { AlertCircle, Upload, Download } from "lucide-react";
 import { createOrder, updateOrderAfterPayment, createAndSendInvoice } from "@/lib/invoice-service";
 import { initializeRazorpay, createRazorpayOrder, processPayment } from "@/lib/payment-service";
 
@@ -60,6 +61,7 @@ export default function Order() {
   const [processingStep, setProcessingStep] = useState("");
   const [orderId, setOrderId] = useState<string | null>(null);
   const [paymentProcessing, setPaymentProcessing] = useState(false);
+  const [invoicePdf, setInvoicePdf] = useState<{ blob?: Blob; url?: string } | null>(null);
 
   useEffect(() => {
     initializeRazorpay()
@@ -127,13 +129,29 @@ export default function Order() {
       setLoading(true);
       setProcessingStep("Processing your order...");
 
-      // In demo mode, we'll skip the firebase operations
-      console.log("Processing order with file:", file.name);
+      // Prepare for file upload (actual or simulated)
+      let fileUrl = "";
       
-      // Simulate file upload
-      setProcessingStep("Uploading your design file...");
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      const fileUrl = URL.createObjectURL(file);
+      // In demo mode, we'll skip the firebase operations
+      if (process.env.RAZORPAY_DEMO_MODE === 'true') {
+        console.log("Demo mode - simulating file upload");
+        fileUrl = URL.createObjectURL(file);
+        await new Promise(resolve => setTimeout(resolve, 500)); // Simulate delay
+      } else {
+        // Attempt to upload file to Firebase Storage
+        try {
+          setProcessingStep("Uploading your design file...");
+          const storageRef = ref(storage, `designs/${user?.uid}/${Date.now()}_${file.name}`);
+          const uploadResult = await uploadBytes(storageRef, file);
+          fileUrl = await getDownloadURL(uploadResult.ref);
+          console.log("File uploaded, URL:", fileUrl);
+        } catch (uploadError) {
+          console.error("Error uploading file:", uploadError);
+          // Create a local URL as fallback
+          fileUrl = URL.createObjectURL(file);
+          console.log("Using local URL instead:", fileUrl);
+        }
+      }
       
       const estimatedPrice = calculateEstimatedPrice();
       
@@ -205,7 +223,7 @@ export default function Order() {
       
       setProcessingStep("Processing payment...");
       
-      // Process the payment (simulated in demo mode)
+      // Process the payment
       const paymentResult = await processPayment({
         orderId: createdOrderId,
         razorpayOrderId: razorpayOrder.id,
@@ -229,20 +247,31 @@ export default function Order() {
         paymentResult
       );
       
-      setProcessingStep("Completing order...");
+      setProcessingStep("Order completed!");
       
-      let toastDescription = `Your order has been received and is being processed. (Demo Mode)`;
+      if (invoiceResult.success && invoiceResult.pdfBlob) {
+        // Save the PDF blob and URL for download
+        setInvoicePdf({
+          blob: invoiceResult.pdfBlob,
+          url: invoiceResult.pdfUrl
+        });
+      }
+      
+      let toastDescription = `Your order has been received and is being processed.`;
       
       if (invoiceResult.success) {
-        toastDescription += " An invoice has been simulated and would be sent to your email in production.";
+        toastDescription += " An invoice has been sent to your email.";
       }
       
       toast({
-        title: "Order Placed Successfully (Demo)",
+        title: "Order Placed Successfully",
         description: toastDescription,
       });
       
-      navigate("/dashboard");
+      // Reset loading state but don't navigate yet to allow download
+      setPaymentProcessing(false);
+      setProcessingStep("");
+      
     } catch (error) {
       console.error("Payment processing error:", error);
       
@@ -251,10 +280,29 @@ export default function Order() {
         description: "There was an issue with the payment. Please try again or contact support.",
         variant: "destructive",
       });
-    } finally {
+      
       setPaymentProcessing(false);
       setProcessingStep("");
     }
+  };
+
+  const handleDownloadInvoice = () => {
+    if (!invoicePdf || !invoicePdf.blob) return;
+    
+    const url = window.URL.createObjectURL(invoicePdf.blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Invoice-${orderId}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    
+    // Clean up
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+  };
+
+  const handleFinishOrder = () => {
+    navigate("/dashboard");
   };
 
   const estimatedPrice = calculateEstimatedPrice();
@@ -283,6 +331,35 @@ export default function Order() {
                     <h3 className="text-lg font-medium mb-2">Processing Payment</h3>
                     <p className="text-gray-500">{processingStep}</p>
                     <p className="text-sm mt-4">Please complete the payment in the Razorpay window.</p>
+                  </div>
+                </CardContent>
+              ) : invoicePdf ? (
+                <CardContent className="space-y-6">
+                  <div className="text-center py-10">
+                    <div className="bg-green-50 p-8 rounded-lg">
+                      <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                        </svg>
+                      </div>
+                      <h3 className="text-xl font-medium mb-2">Order Completed!</h3>
+                      <p className="text-gray-600 mb-6">Thank you for your order. Your invoice has been generated.</p>
+                      
+                      <div className="flex flex-col space-y-4 sm:flex-row sm:space-y-0 sm:space-x-4 justify-center">
+                        <Button 
+                          variant="outline" 
+                          className="flex items-center space-x-2"
+                          onClick={handleDownloadInvoice}
+                        >
+                          <Download className="h-4 w-4" />
+                          <span>Download Invoice</span>
+                        </Button>
+                        
+                        <Button onClick={handleFinishOrder}>
+                          Go to Dashboard
+                        </Button>
+                      </div>
+                    </div>
                   </div>
                 </CardContent>
               ) : (

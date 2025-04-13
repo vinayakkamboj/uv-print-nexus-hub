@@ -2,13 +2,17 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { collection, query, where, getDocs } from "firebase/firestore";
-import { db } from "@/lib/firebase";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { collection, query, where, getDocs, doc, updateDoc } from "firebase/firestore";
+import { updatePassword } from "firebase/auth";
+import { db, auth } from "@/lib/firebase";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { formatDate, formatCurrency } from "@/lib/utils";
-import { ShoppingBag, FileText, Settings, Clock, Package, CheckCircle, Truck, CreditCard } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { ShoppingBag, FileText, Settings, Clock, Package, CheckCircle, Truck, CreditCard, Download } from "lucide-react";
 
 // Define order and invoice types
 interface Order {
@@ -39,10 +43,23 @@ interface Invoice {
 }
 
 export default function Dashboard() {
-  const { userData } = useAuth();
+  const { userData, user, updateUserProfile } = useAuth();
+  const { toast } = useToast();
   const [orders, setOrders] = useState<Order[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
+  
+  // Profile update states
+  const [name, setName] = useState(userData?.name || "");
+  const [phone, setPhone] = useState(userData?.phone || "");
+  const [gstNumber, setGstNumber] = useState(userData?.gstNumber || "");
+  const [updatingProfile, setUpdatingProfile] = useState(false);
+  
+  // Password change states
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [changingPassword, setChangingPassword] = useState(false);
 
   useEffect(() => {
     const fetchUserData = async () => {
@@ -121,6 +138,98 @@ export default function Dashboard() {
   // Function to find the invoice for an order
   const findInvoiceForOrder = (orderId: string) => {
     return invoices.find(invoice => invoice.orderId === orderId);
+  };
+  
+  // Handle profile update
+  const handleUpdateProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+    
+    setUpdatingProfile(true);
+    
+    try {
+      // Update profile in Firebase
+      const userRef = doc(db, "users", user.uid);
+      await updateDoc(userRef, {
+        name,
+        phone,
+        gstNumber
+      });
+      
+      // Update context
+      if (updateUserProfile) {
+        updateUserProfile({
+          ...userData,
+          name,
+          phone,
+          gstNumber
+        });
+      }
+      
+      toast({
+        title: "Profile Updated",
+        description: "Your profile has been successfully updated.",
+      });
+    } catch (error) {
+      console.error("Error updating profile:", error);
+      toast({
+        title: "Update Failed",
+        description: "There was a problem updating your profile. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setUpdatingProfile(false);
+    }
+  };
+  
+  // Handle password change
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+    
+    if (newPassword !== confirmPassword) {
+      toast({
+        title: "Password Mismatch",
+        description: "New password and confirmation do not match.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    if (newPassword.length < 6) {
+      toast({
+        title: "Password Too Short",
+        description: "Password must be at least 6 characters long.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    setChangingPassword(true);
+    
+    try {
+      // Update password in Firebase Authentication
+      await updatePassword(user, newPassword);
+      
+      // Clear form
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      
+      toast({
+        title: "Password Changed",
+        description: "Your password has been successfully changed.",
+      });
+    } catch (error) {
+      console.error("Error changing password:", error);
+      toast({
+        title: "Password Change Failed",
+        description: "There was a problem changing your password. You may need to re-authenticate.",
+        variant: "destructive",
+      });
+    } finally {
+      setChangingPassword(false);
+    }
   };
 
   return (
@@ -243,9 +352,10 @@ export default function Dashboard() {
                                     href={orderInvoice.pdfUrl}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="text-primary hover:underline font-medium"
+                                    className="text-primary hover:underline font-medium inline-flex items-center"
                                   >
-                                    View
+                                    <Download className="h-3.5 w-3.5 mr-1" />
+                                    <span>View</span>
                                   </a>
                                 ) : (
                                   <span className="text-gray-400">-</span>
@@ -309,9 +419,10 @@ export default function Dashboard() {
                                 href={invoice.pdfUrl}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="text-primary hover:underline font-medium"
+                                className="text-primary hover:underline font-medium inline-flex items-center"
                               >
-                                Download PDF
+                                <Download className="h-3.5 w-3.5 mr-1" />
+                                <span>Download PDF</span>
                               </a>
                             </td>
                           </tr>
@@ -329,44 +440,138 @@ export default function Dashboard() {
         </TabsContent>
 
         <TabsContent value="profile">
-          <Card>
-            <CardHeader>
-              <CardTitle>Account Information</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                    <h3 className="text-sm font-medium text-gray-500 mb-1">Full Name</h3>
-                    <p className="text-base">{userData?.name || "Not provided"}</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Update Profile</CardTitle>
+                <CardDescription>Update your personal information</CardDescription>
+              </CardHeader>
+              <form onSubmit={handleUpdateProfile}>
+                <CardContent className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="name">Full Name</Label>
+                    <Input
+                      id="name"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      placeholder="Your full name"
+                    />
                   </div>
-                  <div>
-                    <h3 className="text-sm font-medium text-gray-500 mb-1">Email Address</h3>
-                    <p className="text-base">{userData?.email || "Not provided"}</p>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="email">Email Address</Label>
+                    <Input
+                      id="email"
+                      value={userData?.email || ''}
+                      disabled
+                      className="bg-gray-50"
+                    />
+                    <p className="text-xs text-gray-500">Email cannot be changed</p>
                   </div>
-                  <div>
-                    <h3 className="text-sm font-medium text-gray-500 mb-1">Phone Number</h3>
-                    <p className="text-base">{userData?.phone || "Not provided"}</p>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="phone">Phone Number</Label>
+                    <Input
+                      id="phone"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      placeholder="Your phone number"
+                    />
                   </div>
-                  <div>
-                    <h3 className="text-sm font-medium text-gray-500 mb-1">GST Number</h3>
-                    <p className="text-base">{userData?.gstNumber || "Not provided"}</p>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="gstNumber">GST Number</Label>
+                    <Input
+                      id="gstNumber"
+                      value={gstNumber}
+                      onChange={(e) => setGstNumber(e.target.value)}
+                      placeholder="e.g., 06ABCDE1234F1Z5"
+                    />
                   </div>
+                </CardContent>
+                <CardFooter>
+                  <Button type="submit" disabled={updatingProfile}>
+                    {updatingProfile ? (
+                      <div className="flex items-center">
+                        <div className="mr-2 h-4 w-4 animate-spin rounded-full border-t-2 border-white"></div>
+                        <span>Updating...</span>
+                      </div>
+                    ) : (
+                      "Update Profile"
+                    )}
+                  </Button>
+                </CardFooter>
+              </form>
+            </Card>
+            
+            <Card>
+              <CardHeader>
+                <CardTitle>Change Password</CardTitle>
+                <CardDescription>Update your account password</CardDescription>
+              </CardHeader>
+              <form onSubmit={handleChangePassword}>
+                <CardContent className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="currentPassword">Current Password</Label>
+                    <Input
+                      id="currentPassword"
+                      type="password"
+                      value={currentPassword}
+                      onChange={(e) => setCurrentPassword(e.target.value)}
+                      placeholder="Enter current password"
+                    />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="newPassword">New Password</Label>
+                    <Input
+                      id="newPassword"
+                      type="password"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      placeholder="Enter new password"
+                    />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="confirmPassword">Confirm New Password</Label>
+                    <Input
+                      id="confirmPassword"
+                      type="password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      placeholder="Confirm new password"
+                    />
+                  </div>
+                </CardContent>
+                <CardFooter>
+                  <Button type="submit" disabled={changingPassword}>
+                    {changingPassword ? (
+                      <div className="flex items-center">
+                        <div className="mr-2 h-4 w-4 animate-spin rounded-full border-t-2 border-white"></div>
+                        <span>Changing Password...</span>
+                      </div>
+                    ) : (
+                      "Change Password"
+                    )}
+                  </Button>
+                </CardFooter>
+              </form>
+            </Card>
+            
+            <Card className="md:col-span-2">
+              <CardHeader>
+                <CardTitle>Account Actions</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-wrap gap-4">
+                  <Link to="/order">
+                    <Button>Place New Order</Button>
+                  </Link>
                 </div>
-
-                <div className="pt-4 mt-4 border-t">
-                  <h3 className="text-lg font-medium mb-4">Account Actions</h3>
-                  <div className="flex flex-wrap gap-4">
-                    <Button variant="outline">Update Profile</Button>
-                    <Button variant="outline">Change Password</Button>
-                    <Link to="/order">
-                      <Button>Place New Order</Button>
-                    </Link>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
       </Tabs>
     </div>

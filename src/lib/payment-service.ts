@@ -1,3 +1,4 @@
+
 // src/lib/payment-service.ts
 interface RazorpayResponse {
   razorpay_payment_id: string;
@@ -84,10 +85,10 @@ export const processPayment = (
     console.log("Processing payment with Razorpay...");
     
     // Check if we should use a real Razorpay integration or simulate payment
-    const useRealRazorpay = false; // Set to true when you want to use the actual Razorpay
+    const demoMode = process.env.RAZORPAY_DEMO_MODE === 'true';
     
-    if (!useRealRazorpay) {
-      console.log("Using simulated payment process");
+    if (demoMode) {
+      console.log("Using simulated payment process (DEMO MODE)");
       // Simulate a 2-second delay to mimic payment processing
       setTimeout(() => {
         const mockPaymentId = `pay_${Math.random().toString(36).substring(2, 15)}`;
@@ -109,7 +110,7 @@ export const processPayment = (
       return;
     }
     
-    // Only execute this code if useRealRazorpay is true
+    // Only execute this code if demoMode is false
     // First check if Razorpay is available
     if (typeof window.Razorpay === 'undefined') {
       console.error("Razorpay is not initialized");
@@ -120,7 +121,7 @@ export const processPayment = (
     console.log("Opening Razorpay payment window...");
     
     const options = {
-      key: 'rzp_test_HJG5Rtx42VMzMK', // Razorpay test key
+      key: process.env.RAZORPAY_KEY_ID, // Use environment variable
       amount: orderDetails.amount * 100, // Razorpay expects amount in paise
       currency: orderDetails.currency,
       name: 'Micro UV Printers',

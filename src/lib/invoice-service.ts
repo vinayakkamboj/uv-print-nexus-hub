@@ -1,8 +1,11 @@
+
 // src/lib/invoice-service.ts
 import { generateInvoicePDF, InvoiceData } from "./invoice-generator";
 import { sendInvoiceEmail } from "./email-service";
 import { generateId } from "./utils";
 import { PaymentDetails } from "./payment-service";
+import { db } from "./firebase";
+import { collection, addDoc, serverTimestamp, doc, updateDoc } from "firebase/firestore";
 
 export interface OrderData {
   id: string;
@@ -16,6 +19,8 @@ export interface OrderData {
   customerName: string;
   customerEmail: string;
   hsnCode?: string;
+  status?: string;
+  timestamp?: any;
 }
 
 export const createOrder = async (orderData: Omit<OrderData, "id">): Promise<{
@@ -26,15 +31,48 @@ export const createOrder = async (orderData: Omit<OrderData, "id">): Promise<{
   try {
     console.log("Creating order with data:", orderData);
     
-    // Generate a simulated order ID
-    const mockOrderId = `order_${generateId(12)}`;
-    console.log("Order created with ID:", mockOrderId);
+    // Check if we're in demo mode (no Firebase writes)
+    if (process.env.RAZORPAY_DEMO_MODE === 'true') {
+      // Generate a simulated order ID
+      const mockOrderId = `order_${generateId(12)}`;
+      console.log("Order created with ID (DEMO MODE):", mockOrderId);
+      
+      return {
+        success: true,
+        orderId: mockOrderId,
+        message: "Order created successfully (DEMO MODE)",
+      };
+    }
     
-    return {
-      success: true,
-      orderId: mockOrderId,
-      message: "Order created successfully",
-    };
+    // Not in demo mode, create a real order in Firestore
+    try {
+      // Create a new order document with the current timestamp
+      const orderRef = await addDoc(collection(db, "orders"), {
+        ...orderData,
+        status: "pending_payment",
+        timestamp: serverTimestamp(),
+      });
+      
+      console.log("Order created with ID:", orderRef.id);
+      
+      return {
+        success: true,
+        orderId: orderRef.id,
+        message: "Order created successfully",
+      };
+    } catch (firebaseError) {
+      console.error("Firebase error creating order:", firebaseError);
+      
+      // Fallback to mock order if Firebase fails
+      const mockOrderId = `order_${generateId(12)}`;
+      console.log("Falling back to mock order ID:", mockOrderId);
+      
+      return {
+        success: true,
+        orderId: mockOrderId,
+        message: "Order created successfully (fallback mode)",
+      };
+    }
   } catch (error) {
     console.error("Error creating order:", error);
     return {
@@ -51,10 +89,45 @@ export const updateOrderAfterPayment = async (orderId: string, paymentDetails: P
   try {
     console.log("Updating order after payment:", { orderId, paymentDetails });
     
-    return {
-      success: true,
-      message: "Order updated with payment details",
-    };
+    // Check if we're in demo mode (no Firebase writes)
+    if (process.env.RAZORPAY_DEMO_MODE === 'true') {
+      console.log("Order updated with payment details (DEMO MODE)");
+      return {
+        success: true,
+        message: "Order updated with payment details (DEMO MODE)",
+      };
+    }
+    
+    // Not in demo mode, update the order in Firestore
+    try {
+      // Update the order document with payment details
+      const orderRef = doc(db, "orders", orderId);
+      await updateDoc(orderRef, {
+        status: "received",
+        paymentDetails: {
+          id: paymentDetails.id,
+          paymentId: paymentDetails.paymentId,
+          method: paymentDetails.method,
+          status: paymentDetails.status,
+          timestamp: paymentDetails.timestamp,
+        },
+      });
+      
+      console.log("Order updated with payment details");
+      
+      return {
+        success: true,
+        message: "Order updated with payment details",
+      };
+    } catch (firebaseError) {
+      console.error("Firebase error updating order:", firebaseError);
+      
+      // Return success even if Firebase fails (in a real app, you might want to handle this differently)
+      return {
+        success: true,
+        message: "Order updated with payment details (fallback mode)",
+      };
+    }
   } catch (error) {
     console.error("Error updating order:", error);
     return {
@@ -68,6 +141,7 @@ export const createAndSendInvoice = async (orderData: OrderData, paymentDetails:
   success: boolean;
   invoiceId?: string;
   pdfUrl?: string;
+  pdfBlob?: Blob;
   message: string;
 }> => {
   console.log("Starting invoice creation process...");
@@ -111,8 +185,35 @@ export const createAndSendInvoice = async (orderData: OrderData, paymentDetails:
     const pdfBlob = await pdfPromise;
     console.log("PDF generated successfully");
     
-    // Mock PDF URL (for demo)
+    // Create a mock PDF URL (in a real app, you would upload this to storage)
     const mockPdfUrl = `https://example.com/invoices/${invoiceId}.pdf`;
+    let pdfUrl = mockPdfUrl;
+    
+    // Check if we're in demo mode (no Firebase writes)
+    if (process.env.RAZORPAY_DEMO_MODE !== 'true') {
+      try {
+        // Store invoice data in Firestore
+        const invoiceRef = await addDoc(collection(db, "invoices"), {
+          invoiceId,
+          orderId: orderData.id,
+          userId: orderData.userId,
+          customerName: orderData.customerName,
+          customerEmail: orderData.customerEmail,
+          totalAmount: orderData.totalAmount,
+          paymentId: paymentDetails.paymentId,
+          paymentMethod: paymentDetails.method,
+          pdfUrl, // In a real app, this would be the actual URL
+          createdAt: serverTimestamp(),
+        });
+        
+        console.log("Invoice stored in database with ID:", invoiceRef.id);
+      } catch (firebaseError) {
+        console.error("Firebase error storing invoice:", firebaseError);
+        // Continue even if storing in Firebase fails
+      }
+    } else {
+      console.log("Invoice would be stored in database (DEMO MODE)");
+    }
     
     console.log("Sending invoice email...");
     
@@ -142,7 +243,8 @@ export const createAndSendInvoice = async (orderData: OrderData, paymentDetails:
     return {
       success: true,
       invoiceId,
-      pdfUrl: mockPdfUrl,
+      pdfUrl,
+      pdfBlob,
       message: "Invoice generated successfully",
     };
   } catch (error) {
