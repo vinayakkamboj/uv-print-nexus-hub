@@ -121,7 +121,7 @@ export const processPayment = (
     console.log("Opening Razorpay payment window...");
     
     const options = {
-      key: process.env.RAZORPAY_KEY_ID, // Use environment variable
+      key: process.env.RAZORPAY_KEY_ID || "", // Use environment variable
       amount: orderDetails.amount * 100, // Razorpay expects amount in paise
       currency: orderDetails.currency,
       name: 'Micro UV Printers',

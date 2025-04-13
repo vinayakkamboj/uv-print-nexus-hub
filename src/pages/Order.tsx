@@ -54,7 +54,7 @@ export default function Order() {
   const [productType, setProductType] = useState("");
   const [quantity, setQuantity] = useState("");
   const [specifications, setSpecifications] = useState("");
-  const [deliveryAddress, setDeliveryAddress] = useState("");
+  const [deliveryAddress, setDeliveryAddress] = useState(userData?.address || "");
   const [gstNumber, setGstNumber] = useState(userData?.gstNumber || "");
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
@@ -64,14 +64,30 @@ export default function Order() {
   const [invoicePdf, setInvoicePdf] = useState<{ blob?: Blob; url?: string } | null>(null);
 
   useEffect(() => {
+    if (userData?.gstNumber) {
+      setGstNumber(userData.gstNumber);
+    }
+    if (userData?.address) {
+      setDeliveryAddress(userData.address);
+    }
+  }, [userData]);
+
+  useEffect(() => {
     initializeRazorpay()
       .then((success) => {
         if (!success) {
           console.error("Razorpay SDK failed to load");
+          toast({
+            title: "Warning",
+            description: "Payment gateway could not be initialized. You may experience issues during checkout.",
+            variant: "destructive",
+          });
         }
       })
-      .catch(console.error);
-  }, []);
+      .catch(error => {
+        console.error("Error initializing Razorpay:", error);
+      });
+  }, [toast]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -125,6 +141,17 @@ export default function Order() {
       return;
     }
 
+    // Validate user is logged in
+    if (!user) {
+      toast({
+        title: "Authentication Error",
+        description: "You must be logged in to place an order.",
+        variant: "destructive",
+      });
+      navigate("/login");
+      return;
+    }
+
     try {
       setLoading(true);
       setProcessingStep("Processing your order...");
@@ -150,6 +177,12 @@ export default function Order() {
           // Create a local URL as fallback
           fileUrl = URL.createObjectURL(file);
           console.log("Using local URL instead:", fileUrl);
+          
+          toast({
+            title: "Upload Warning",
+            description: "We couldn't upload your file to the cloud but will continue with a local copy.",
+            variant: "default",
+          });
         }
       }
       
@@ -193,7 +226,7 @@ export default function Order() {
       });
       
       // Start payment process
-      handlePaymentProcess(orderResult.orderId, orderData);
+      await handlePaymentProcess(orderResult.orderId, orderData);
       
     } catch (error) {
       console.error("Error placing order:", error);

@@ -9,7 +9,7 @@ import {
   GoogleAuthProvider,
   signInWithPopup
 } from "firebase/auth";
-import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
+import { doc, getDoc, setDoc, updateDoc, serverTimestamp } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase";
 
 type UserData = {
@@ -29,6 +29,7 @@ interface AuthContextProps {
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   googleSignIn: () => Promise<void>;
+  updateUserProfile: (updatedData: UserData) => void;
 }
 
 const AuthContext = createContext<AuthContextProps | undefined>(undefined);
@@ -83,7 +84,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // Fixed login function to return void to match the interface
   const login = async (email: string, password: string): Promise<void> => {
     await signInWithEmailAndPassword(auth, email, password);
     return;
@@ -120,6 +120,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  // Add the updateUserProfile function
+  const updateUserProfile = (updatedData: UserData) => {
+    setUserData(updatedData);
+  };
+
   const value = {
     user,
     userData,
@@ -127,7 +132,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     signup,
     login,
     logout,
-    googleSignIn
+    googleSignIn,
+    updateUserProfile
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

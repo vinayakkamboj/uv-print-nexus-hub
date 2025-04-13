@@ -5,7 +5,7 @@ import { sendInvoiceEmail } from "./email-service";
 import { generateId } from "./utils";
 import { PaymentDetails } from "./payment-service";
 import { db } from "./firebase";
-import { collection, addDoc, serverTimestamp, doc, updateDoc } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp, doc, updateDoc, where, query, getDocs } from "firebase/firestore";
 
 export interface OrderData {
   id: string;
@@ -44,9 +44,9 @@ export const createOrder = async (orderData: Omit<OrderData, "id">): Promise<{
       };
     }
     
-    // Not in demo mode, create a real order in Firestore
+    // Create a new order document with the current timestamp
     try {
-      // Create a new order document with the current timestamp
+      // Create a new order document with the current timestamp and ensure userId is included
       const orderRef = await addDoc(collection(db, "orders"), {
         ...orderData,
         status: "pending_payment",
@@ -253,5 +253,66 @@ export const createAndSendInvoice = async (orderData: OrderData, paymentDetails:
       success: false,
       message: `Failed to generate invoice: ${error instanceof Error ? error.message : "Unknown error"}`,
     };
+  }
+};
+
+// New function to fetch all orders for a user
+export const getUserOrders = async (userId: string): Promise<OrderData[]> => {
+  try {
+    if (process.env.RAZORPAY_DEMO_MODE === 'true') {
+      // Return mock data in demo mode
+      return [
+        {
+          id: `order_${generateId(8)}`,
+          userId,
+          productType: "sticker",
+          quantity: 500,
+          deliveryAddress: "123 Test Street, Demo City",
+          totalAmount: 1500,
+          customerName: "Demo User",
+          customerEmail: "demo@example.com",
+          status: "received",
+          timestamp: new Date(),
+        },
+        {
+          id: `order_${generateId(8)}`,
+          userId,
+          productType: "tag",
+          quantity: 200,
+          deliveryAddress: "456 Sample Road, Test Town",
+          totalAmount: 800,
+          customerName: "Demo User",
+          customerEmail: "demo@example.com",
+          status: "shipped",
+          timestamp: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000), // 7 days ago
+        }
+      ];
+    }
+    
+    // Query orders collection for all orders with matching userId
+    const ordersQuery = query(
+      collection(db, "orders"),
+      where("userId", "==", userId)
+    );
+    
+    const ordersSnapshot = await getDocs(ordersQuery);
+    
+    if (ordersSnapshot.empty) {
+      console.log("No orders found for user:", userId);
+      return [];
+    }
+    
+    // Convert snapshot to array of OrderData
+    const orders = ordersSnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    })) as OrderData[];
+    
+    console.log(`Found ${orders.length} orders for user:`, userId);
+    
+    return orders;
+  } catch (error) {
+    console.error("Error fetching user orders:", error);
+    return [];
   }
 };

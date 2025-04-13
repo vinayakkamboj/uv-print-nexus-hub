@@ -2,17 +2,18 @@
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { collection, query, where, getDocs, doc, updateDoc } from "firebase/firestore";
-import { updatePassword } from "firebase/auth";
+import { collection, query, where, getDocs, doc, updateDoc, orderBy } from "firebase/firestore";
+import { updatePassword, reauthenticateWithCredential, EmailAuthProvider } from "firebase/auth";
 import { db, auth } from "@/lib/firebase";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { formatDate, formatCurrency } from "@/lib/utils";
+import { formatDate, formatCurrency, isValidGSTIN } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
-import { ShoppingBag, FileText, Settings, Clock, Package, CheckCircle, Truck, CreditCard, Download } from "lucide-react";
+import { ShoppingBag, FileText, Settings, Clock, Package, CheckCircle, Truck, CreditCard, Download, AlertCircle } from "lucide-react";
+import { getUserOrders } from "@/lib/invoice-service";
 
 // Define order and invoice types
 interface Order {
@@ -60,22 +61,23 @@ export default function Dashboard() {
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [changingPassword, setChangingPassword] = useState(false);
+  const [passwordError, setPasswordError] = useState("");
+
+  useEffect(() => {
+    if (userData?.name) setName(userData.name);
+    if (userData?.phone) setPhone(userData.phone);
+    if (userData?.gstNumber) setGstNumber(userData.gstNumber);
+  }, [userData]);
 
   useEffect(() => {
     const fetchUserData = async () => {
       if (!userData?.uid) return;
 
       try {
-        // Fetch orders
-        const ordersQuery = query(
-          collection(db, "orders"),
-          where("userId", "==", userData.uid)
-        );
-        const ordersSnapshot = await getDocs(ordersQuery);
-        const ordersData = ordersSnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        })) as Order[];
+        setLoading(true);
+        
+        // Use the new getUserOrders function to fetch all orders for this user
+        const ordersData = await getUserOrders(userData.uid);
         setOrders(ordersData);
 
         // Fetch invoices
@@ -89,15 +91,22 @@ export default function Dashboard() {
           ...doc.data()
         })) as Invoice[];
         setInvoices(invoicesData);
+        
+        console.log(`Loaded ${ordersData.length} orders and ${invoicesData.length} invoices`);
       } catch (error) {
         console.error("Error fetching user data:", error);
+        toast({
+          title: "Error",
+          description: "Failed to load your data. Please refresh the page.",
+          variant: "destructive",
+        });
       } finally {
         setLoading(false);
       }
     };
 
     fetchUserData();
-  }, [userData]);
+  }, [userData, toast]);
 
   // Get status color
   const getStatusColor = (status: string) => {
@@ -145,6 +154,16 @@ export default function Dashboard() {
     e.preventDefault();
     if (!user) return;
     
+    // Validate GST number if provided
+    if (gstNumber && !isValidGSTIN(gstNumber)) {
+      toast({
+        title: "Invalid GST Number",
+        description: "Please enter a valid GST number or leave it blank.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
     setUpdatingProfile(true);
     
     try {
@@ -159,7 +178,7 @@ export default function Dashboard() {
       // Update context
       if (updateUserProfile) {
         updateUserProfile({
-          ...userData,
+          ...userData!,
           name,
           phone,
           gstNumber
@@ -187,7 +206,10 @@ export default function Dashboard() {
     e.preventDefault();
     if (!user) return;
     
+    setPasswordError("");
+    
     if (newPassword !== confirmPassword) {
+      setPasswordError("New password and confirmation do not match.");
       toast({
         title: "Password Mismatch",
         description: "New password and confirmation do not match.",
@@ -197,6 +219,7 @@ export default function Dashboard() {
     }
     
     if (newPassword.length < 6) {
+      setPasswordError("Password must be at least 6 characters long.");
       toast({
         title: "Password Too Short",
         description: "Password must be at least 6 characters long.",
@@ -208,7 +231,15 @@ export default function Dashboard() {
     setChangingPassword(true);
     
     try {
-      // Update password in Firebase Authentication
+      // First reauthenticate the user
+      const credential = EmailAuthProvider.credential(
+        user.email || "",
+        currentPassword
+      );
+      
+      await reauthenticateWithCredential(user, credential);
+      
+      // Then update password
       await updatePassword(user, newPassword);
       
       // Clear form
@@ -220,11 +251,24 @@ export default function Dashboard() {
         title: "Password Changed",
         description: "Your password has been successfully changed.",
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error changing password:", error);
+      
+      let errorMessage = "There was a problem changing your password.";
+      
+      if (error.code === 'auth/wrong-password') {
+        errorMessage = "Current password is incorrect.";
+        setPasswordError("Current password is incorrect.");
+      } else if (error.code === 'auth/too-many-requests') {
+        errorMessage = "Too many attempts. Please try again later.";
+        setPasswordError("Too many attempts. Please try again later.");
+      } else {
+        setPasswordError(error.message || "Unknown error occurred.");
+      }
+      
       toast({
         title: "Password Change Failed",
-        description: "There was a problem changing your password. You may need to re-authenticate.",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
@@ -235,7 +279,7 @@ export default function Dashboard() {
   return (
     <div className="container-custom py-12">
       <h1 className="text-3xl font-bold mb-2">Dashboard</h1>
-      <p className="text-gray-600 mb-8">Welcome back, {userData?.name} Ji</p>
+      <p className="text-gray-600 mb-8">Welcome back, {userData?.name || "User"}</p>
 
       {/* Quick Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
@@ -299,7 +343,7 @@ export default function Dashboard() {
           <Card>
             <CardHeader>
               <div className="flex justify-between items-center">
-                <CardTitle>Recent Orders</CardTitle>
+                <CardTitle>My Orders</CardTitle>
                 <Link to="/order">
                   <Button>New Order</Button>
                 </Link>
@@ -326,7 +370,16 @@ export default function Dashboard() {
                     </thead>
                     <tbody>
                       {orders
-                        .sort((a, b) => b.timestamp?.toMillis() - a.timestamp?.toMillis())
+                        .sort((a, b) => {
+                          if (!a.timestamp || !b.timestamp) return 0;
+                          if (typeof a.timestamp === 'object' && a.timestamp.toMillis) {
+                            return b.timestamp.toMillis() - a.timestamp.toMillis();
+                          }
+                          // Fallback if timestamp is a Date object or similar
+                          const aTime = a.timestamp instanceof Date ? a.timestamp.getTime() : 0;
+                          const bTime = b.timestamp instanceof Date ? b.timestamp.getTime() : 0;
+                          return bTime - aTime;
+                        })
                         .map((order) => {
                           const orderInvoice = findInvoiceForOrder(order.id);
                           return (
@@ -335,7 +388,11 @@ export default function Dashboard() {
                               <td className="py-3 px-4">{order.productType}</td>
                               <td className="py-3 px-4">{order.quantity}</td>
                               <td className="py-3 px-4">
-                                {order.timestamp ? formatDate(order.timestamp.toDate()) : "N/A"}
+                                {order.timestamp ? (
+                                  typeof order.timestamp === 'object' && order.timestamp.toDate 
+                                    ? formatDate(order.timestamp.toDate()) 
+                                    : formatDate(order.timestamp)
+                                ) : "N/A"}
                               </td>
                               <td className="py-3 px-4">
                                 <div className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(order.status)}`}>
@@ -404,13 +461,21 @@ export default function Dashboard() {
                     </thead>
                     <tbody>
                       {invoices
-                        .sort((a, b) => b.createdAt?.toMillis() - a.createdAt?.toMillis())
+                        .sort((a, b) => {
+                          if (!a.createdAt || !b.createdAt) return 0;
+                          if (typeof a.createdAt === 'object' && a.createdAt.toMillis) {
+                            return b.createdAt.toMillis() - a.createdAt.toMillis();
+                          }
+                          return 0;
+                        })
                         .map((invoice) => (
                           <tr key={invoice.id} className="border-b hover:bg-gray-50">
                             <td className="py-3 px-4 font-mono text-sm">{invoice.invoiceId || invoice.id}</td>
                             <td className="py-3 px-4 font-mono text-sm">{invoice.orderId}</td>
                             <td className="py-3 px-4">
-                              {invoice.createdAt ? formatDate(invoice.createdAt.toDate()) : "N/A"}
+                              {invoice.createdAt && typeof invoice.createdAt === 'object' && invoice.createdAt.toDate 
+                                ? formatDate(invoice.createdAt.toDate()) 
+                                : "N/A"}
                             </td>
                             <td className="py-3 px-4">{formatCurrency(invoice.totalAmount)}</td>
                             <td className="py-3 px-4">{invoice.paymentMethod || "Online"}</td>
@@ -519,6 +584,7 @@ export default function Dashboard() {
                       value={currentPassword}
                       onChange={(e) => setCurrentPassword(e.target.value)}
                       placeholder="Enter current password"
+                      required
                     />
                   </div>
                   
@@ -530,6 +596,7 @@ export default function Dashboard() {
                       value={newPassword}
                       onChange={(e) => setNewPassword(e.target.value)}
                       placeholder="Enter new password"
+                      required
                     />
                   </div>
                   
@@ -541,8 +608,16 @@ export default function Dashboard() {
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
                       placeholder="Confirm new password"
+                      required
                     />
                   </div>
+                  
+                  {passwordError && (
+                    <div className="mt-2 flex items-center text-red-600 text-sm">
+                      <AlertCircle className="h-4 w-4 mr-1" />
+                      <span>{passwordError}</span>
+                    </div>
+                  )}
                 </CardContent>
                 <CardFooter>
                   <Button type="submit" disabled={changingPassword}>
