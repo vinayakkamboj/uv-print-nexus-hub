@@ -1,5 +1,3 @@
-
-// src/lib/invoice-service.ts
 import { generateInvoicePDF, InvoiceData } from "./invoice-generator";
 import { sendInvoiceEmail } from "./email-service";
 import { generateId } from "./utils";
@@ -237,8 +235,8 @@ export const createAndSendInvoice = async (orderData: OrderData, paymentDetails:
         ]);
         
         const invoiceRef = await storePromise;
-        if (invoiceRef) {
-          console.log("Invoice stored in database with ID:", invoiceRef.id);
+        if (invoiceRef && 'id' in (invoiceRef as any)) {
+          console.log("Invoice stored in database with ID:", (invoiceRef as any).id);
         }
       } catch (firebaseError) {
         console.error("Firebase error storing invoice:", firebaseError);
