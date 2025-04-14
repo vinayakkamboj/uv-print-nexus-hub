@@ -9,6 +9,11 @@ import { collection, addDoc, serverTimestamp, doc, updateDoc, where, query, getD
 // Use import.meta.env instead of process.env for Vite apps
 const DEMO_MODE = import.meta.env.VITE_RAZORPAY_DEMO_MODE === 'true';
 
+// Constants for timeouts
+const ORDER_CREATION_TIMEOUT = 3000;
+const INVOICE_GENERATION_TIMEOUT = 2000;
+const QUERY_TIMEOUT = 4000;
+
 export interface OrderData {
   id: string;
   userId: string;
@@ -23,6 +28,13 @@ export interface OrderData {
   hsnCode?: string;
   status?: string;
   timestamp?: any;
+  // Added tracking fields
+  trackingId?: string;
+  paymentStatus?: string;
+  paymentDetails?: any;
+  lastUpdated?: any;
+  fileUrl?: string;
+  fileName?: string;
 }
 
 export const createOrder = async (orderData: Omit<OrderData, "id">): Promise<{
@@ -32,10 +44,13 @@ export const createOrder = async (orderData: Omit<OrderData, "id">): Promise<{
 }> => {
   console.log("Creating order with data:", orderData);
   
+  // Generate a customer tracking ID for consistent linking
+  const trackingId = `TRK-${orderData.userId.substring(0, 6)}-${generateId(8).toUpperCase()}`;
+  
   // Check if we're in demo mode (no Firebase writes)
   if (DEMO_MODE) {
-    // Generate a simulated order ID
-    const mockOrderId = `order_${generateId(12)}`;
+    // Generate a simulated order ID that includes tracking info
+    const mockOrderId = `order_${trackingId}_${generateId(6)}`;
     console.log("Order created with ID (DEMO MODE):", mockOrderId);
     
     return {
@@ -54,6 +69,9 @@ export const createOrder = async (orderData: Omit<OrderData, "id">): Promise<{
           ...orderData,
           status: "pending_payment",
           timestamp: serverTimestamp(),
+          trackingId,
+          paymentStatus: "pending",
+          lastUpdated: serverTimestamp(),
         });
         
         console.log("Order created with ID:", orderRef.id);
@@ -67,7 +85,7 @@ export const createOrder = async (orderData: Omit<OrderData, "id">): Promise<{
         console.error("Firebase error creating order:", firebaseError);
         
         // Fallback to mock order if Firebase fails
-        const mockOrderId = `order_${generateId(12)}`;
+        const mockOrderId = `order_${trackingId}_${generateId(6)}`;
         console.log("Falling back to mock order ID:", mockOrderId);
         
         return {
@@ -80,7 +98,8 @@ export const createOrder = async (orderData: Omit<OrderData, "id">): Promise<{
     // Timeout promise
     new Promise<{success: boolean; orderId?: string; message: string}>((resolve) => {
       setTimeout(() => {
-        const emergencyOrderId = `emergency_${generateId(12)}`;
+        const trackingId = `TRK-${orderData.userId.substring(0, 6)}-${generateId(8).toUpperCase()}`;
+        const emergencyOrderId = `emergency_${trackingId}_${generateId(6)}`;
         console.log("Order creation timed out, using emergency ID:", emergencyOrderId);
         
         resolve({
@@ -88,7 +107,7 @@ export const createOrder = async (orderData: Omit<OrderData, "id">): Promise<{
           orderId: emergencyOrderId,
           message: "Order created successfully (timeout fallback)",
         });
-      }, 2000); // Reduced timeout for faster fallback
+      }, ORDER_CREATION_TIMEOUT);
     })
   ]);
 };
@@ -116,6 +135,7 @@ export const updateOrderAfterPayment = async (orderId: string, paymentDetails: P
         const orderRef = doc(db, "orders", orderId);
         await updateDoc(orderRef, {
           status: "received",
+          paymentStatus: paymentDetails.status === 'completed' ? "paid" : "failed",
           paymentDetails: {
             id: paymentDetails.id,
             paymentId: paymentDetails.paymentId,
@@ -123,6 +143,7 @@ export const updateOrderAfterPayment = async (orderId: string, paymentDetails: P
             status: paymentDetails.status,
             timestamp: paymentDetails.timestamp,
           },
+          lastUpdated: serverTimestamp(),
         });
         
         console.log("Order updated with payment details");
@@ -150,7 +171,7 @@ export const updateOrderAfterPayment = async (orderId: string, paymentDetails: P
           success: true,
           message: "Order updated with payment details (timeout fallback)",
         });
-      }, 2000); // Reduced timeout for faster fallback
+      }, 2000);
     })
   ]);
 };
@@ -164,8 +185,11 @@ export const createAndSendInvoice = async (orderData: OrderData, paymentDetails:
 }> => {
   console.log("Starting invoice creation process...");
   
-  // Generate invoice ID
-  const invoiceId = `INV-${generateId(8).toUpperCase()}`;
+  // Extract tracking ID from the order or create a new one
+  const trackingId = orderData.trackingId || `TRK-${orderData.userId.substring(0, 6)}-${generateId(8).toUpperCase()}`;
+  
+  // Generate invoice ID that includes tracking info for easier linking
+  const invoiceId = `INV-${trackingId}-${generateId(6).toUpperCase()}`;
   console.log("Generated invoice ID:", invoiceId);
   
   // Prepare invoice data
@@ -197,8 +221,8 @@ export const createAndSendInvoice = async (orderData: OrderData, paymentDetails:
   const pdfBlob = mockPdfBlob;
   console.log("Using quick mock PDF to prevent blocking");
   
-  // Create a mock PDF URL (in a real app, you would upload this to storage)
-  const mockPdfUrl = `https://example.com/invoices/${invoiceId}.pdf`;
+  // Create a mock PDF URL with order and tracking info embedded
+  const mockPdfUrl = `https://example.com/invoices/${invoiceId}_${orderData.id}.pdf`;
   const pdfUrl = mockPdfUrl;
   
   // Check if we're in demo mode (no Firebase writes)
@@ -216,6 +240,7 @@ export const createAndSendInvoice = async (orderData: OrderData, paymentDetails:
           totalAmount: orderData.totalAmount,
           paymentId: paymentDetails.paymentId,
           paymentMethod: paymentDetails.method,
+          trackingId, // Add tracking ID to invoices
           pdfUrl, // In a real app, this would be the actual URL
           createdAt: serverTimestamp(),
         });
@@ -260,11 +285,15 @@ export const createAndSendInvoice = async (orderData: OrderData, paymentDetails:
 export const getUserOrders = async (userId: string): Promise<OrderData[]> => {
   try {
     if (DEMO_MODE) {
-      // Return mock data in demo mode
+      // Return mock data in demo mode with tracking IDs for consistency
+      const trackingId1 = `TRK-${userId.substring(0, 6)}-${generateId(8).toUpperCase()}`;
+      const trackingId2 = `TRK-${userId.substring(0, 6)}-${generateId(8).toUpperCase()}`;
+      
       return [
         {
-          id: `order_${generateId(8)}`,
+          id: `order_${trackingId1}_${generateId(6)}`,
           userId,
+          trackingId: trackingId1,
           productType: "sticker",
           quantity: 500,
           deliveryAddress: "123 Test Street, Demo City",
@@ -272,11 +301,14 @@ export const getUserOrders = async (userId: string): Promise<OrderData[]> => {
           customerName: "Demo User",
           customerEmail: "demo@example.com",
           status: "received",
+          paymentStatus: "paid",
           timestamp: new Date(),
+          lastUpdated: new Date(),
         },
         {
-          id: `order_${generateId(8)}`,
+          id: `order_${trackingId2}_${generateId(6)}`,
           userId,
+          trackingId: trackingId2,
           productType: "tag",
           quantity: 200,
           deliveryAddress: "456 Sample Road, Test Town",
@@ -284,7 +316,9 @@ export const getUserOrders = async (userId: string): Promise<OrderData[]> => {
           customerName: "Demo User",
           customerEmail: "demo@example.com",
           status: "shipped",
+          paymentStatus: "paid",
           timestamp: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000), // 7 days ago
+          lastUpdated: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000), // 5 days ago
         }
       ];
     }
@@ -301,7 +335,7 @@ export const getUserOrders = async (userId: string): Promise<OrderData[]> => {
         setTimeout(() => {
           console.log("Order fetch timed out, returning empty array");
           resolve({ empty: true, docs: [] });
-        }, 2000);
+        }, QUERY_TIMEOUT);
       })
     ]);
     
@@ -332,13 +366,15 @@ export const getInvoicesForOrder = async (orderId: string): Promise<any[]> => {
   try {
     if (DEMO_MODE) {
       // Return mock data in demo mode
+      const trackingId = `TRK-DEMO-${generateId(8).toUpperCase()}`;
       return [{
         id: `inv_${generateId(8)}`,
-        invoiceId: `INV-${generateId(8).toUpperCase()}`,
+        invoiceId: `INV-${trackingId}-${generateId(6).toUpperCase()}`,
         orderId,
+        trackingId,
         createdAt: new Date(),
         totalAmount: 1500,
-        pdfUrl: `https://example.com/invoices/INV-${generateId(8).toUpperCase()}.pdf`,
+        pdfUrl: `https://example.com/invoices/INV-${trackingId}-${generateId(6).toUpperCase()}_${orderId}.pdf`,
       }];
     }
     
@@ -353,7 +389,7 @@ export const getInvoicesForOrder = async (orderId: string): Promise<any[]> => {
         setTimeout(() => {
           console.log("Invoice fetch timed out, returning empty array");
           resolve({ empty: true, docs: [] });
-        }, 2000);
+        }, QUERY_TIMEOUT);
       })
     ]);
     
@@ -375,6 +411,52 @@ export const getInvoicesForOrder = async (orderId: string): Promise<any[]> => {
     return invoices;
   } catch (error) {
     console.error("Error fetching invoices for order:", error);
+    return [];
+  }
+};
+
+// Add a new function to get invoices by tracking ID
+export const getInvoicesByTrackingId = async (trackingId: string): Promise<any[]> => {
+  try {
+    if (DEMO_MODE) {
+      return [{
+        id: `inv_${generateId(8)}`,
+        invoiceId: `INV-${trackingId}-${generateId(6).toUpperCase()}`,
+        orderId: `order_${trackingId}_${generateId(6)}`,
+        trackingId,
+        createdAt: new Date(),
+        totalAmount: 1500,
+        pdfUrl: `https://example.com/invoices/INV-${trackingId}_${generateId(6).toUpperCase()}.pdf`,
+      }];
+    }
+    
+    const invoicesPromise = Promise.race([
+      getDocs(query(
+        collection(db, "invoices"),
+        where("trackingId", "==", trackingId)
+      )),
+      new Promise(resolve => {
+        setTimeout(() => {
+          console.log("Tracking ID invoice fetch timed out, returning empty array");
+          resolve({ empty: true, docs: [] });
+        }, QUERY_TIMEOUT);
+      })
+    ]);
+    
+    const invoicesSnapshot = await invoicesPromise as any;
+    
+    if (invoicesSnapshot.empty) {
+      return [];
+    }
+    
+    const invoices = invoicesSnapshot.docs.map((doc: any) => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+    
+    return invoices;
+  } catch (error) {
+    console.error("Error fetching invoices by tracking ID:", error);
     return [];
   }
 };
