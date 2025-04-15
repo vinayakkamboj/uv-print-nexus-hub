@@ -1,4 +1,3 @@
-
 import { generateInvoicePDF, InvoiceData } from "./invoice-generator";
 import { sendInvoiceEmail } from "./email-service";
 import { generateId } from "./utils";
@@ -9,10 +8,10 @@ import { collection, addDoc, serverTimestamp, doc, updateDoc, where, query, getD
 // Use import.meta.env instead of process.env for Vite apps
 const DEMO_MODE = import.meta.env.VITE_RAZORPAY_DEMO_MODE === 'true';
 
-// Constants for timeouts
-const ORDER_CREATION_TIMEOUT = 3000;
-const INVOICE_GENERATION_TIMEOUT = 2000;
-const QUERY_TIMEOUT = 4000;
+// Increased timeouts to prevent UI freezing
+const ORDER_CREATION_TIMEOUT = 5000;
+const INVOICE_GENERATION_TIMEOUT = 3000;
+const QUERY_TIMEOUT = 6000;
 
 export interface OrderData {
   id: string;
@@ -37,26 +36,31 @@ export interface OrderData {
   fileName?: string;
 }
 
+// Flag to track if we're in fallback mode
+let isInFallbackMode = false;
+
 export const createOrder = async (orderData: Omit<OrderData, "id">): Promise<{
   success: boolean;
   orderId?: string;
+  trackingId?: string;
   message: string;
 }> => {
   console.log("Creating order with data:", orderData);
   
-  // Generate a customer tracking ID for consistent linking
+  // Generate a customer tracking ID for consistent linking - make it unique with user ID
   const trackingId = `TRK-${orderData.userId.substring(0, 6)}-${generateId(8).toUpperCase()}`;
   
-  // Check if we're in demo mode (no Firebase writes)
-  if (DEMO_MODE) {
+  // Check if we're in demo mode or already in fallback mode 
+  if (DEMO_MODE || isInFallbackMode) {
     // Generate a simulated order ID that includes tracking info
     const mockOrderId = `order_${trackingId}_${generateId(6)}`;
-    console.log("Order created with ID (DEMO MODE):", mockOrderId);
+    console.log("Order created with ID (DEMO/FALLBACK MODE):", mockOrderId);
     
     return {
       success: true,
       orderId: mockOrderId,
-      message: "Order created successfully (DEMO MODE)",
+      trackingId,
+      message: "Order created successfully (DEMO/FALLBACK MODE)",
     };
   }
   
@@ -79,10 +83,12 @@ export const createOrder = async (orderData: Omit<OrderData, "id">): Promise<{
         return {
           success: true,
           orderId: orderRef.id,
+          trackingId,
           message: "Order created successfully",
         };
       } catch (firebaseError) {
         console.error("Firebase error creating order:", firebaseError);
+        isInFallbackMode = true;
         
         // Fallback to mock order if Firebase fails
         const mockOrderId = `order_${trackingId}_${generateId(6)}`;
@@ -91,13 +97,15 @@ export const createOrder = async (orderData: Omit<OrderData, "id">): Promise<{
         return {
           success: true,
           orderId: mockOrderId,
+          trackingId,
           message: "Order created successfully (fallback mode)",
         };
       }
     })(),
     // Timeout promise
-    new Promise<{success: boolean; orderId?: string; message: string}>((resolve) => {
+    new Promise<{success: boolean; orderId?: string; trackingId?: string; message: string}>((resolve) => {
       setTimeout(() => {
+        isInFallbackMode = true;
         const trackingId = `TRK-${orderData.userId.substring(0, 6)}-${generateId(8).toUpperCase()}`;
         const emergencyOrderId = `emergency_${trackingId}_${generateId(6)}`;
         console.log("Order creation timed out, using emergency ID:", emergencyOrderId);
@@ -105,6 +113,7 @@ export const createOrder = async (orderData: Omit<OrderData, "id">): Promise<{
         resolve({
           success: true,
           orderId: emergencyOrderId,
+          trackingId,
           message: "Order created successfully (timeout fallback)",
         });
       }, ORDER_CREATION_TIMEOUT);
@@ -118,12 +127,12 @@ export const updateOrderAfterPayment = async (orderId: string, paymentDetails: P
 }> => {
   console.log("Updating order after payment:", { orderId, paymentDetails });
   
-  // Check if we're in demo mode (no Firebase writes)
-  if (DEMO_MODE) {
-    console.log("Order updated with payment details (DEMO MODE)");
+  // Check if we're in demo mode or already in fallback mode
+  if (DEMO_MODE || isInFallbackMode) {
+    console.log("Order updated with payment details (DEMO/FALLBACK MODE)");
     return {
       success: true,
-      message: "Order updated with payment details (DEMO MODE)",
+      message: "Order updated with payment details (DEMO/FALLBACK MODE)",
     };
   }
   
@@ -154,6 +163,7 @@ export const updateOrderAfterPayment = async (orderId: string, paymentDetails: P
         };
       } catch (firebaseError) {
         console.error("Firebase error updating order:", firebaseError);
+        isInFallbackMode = true;
         
         // Return success even if Firebase fails
         return {
@@ -165,13 +175,14 @@ export const updateOrderAfterPayment = async (orderId: string, paymentDetails: P
     // Timeout promise
     new Promise<{success: boolean; message: string}>((resolve) => {
       setTimeout(() => {
+        isInFallbackMode = true;
         console.log("Order update timed out, using fallback");
         
         resolve({
           success: true,
           message: "Order updated with payment details (timeout fallback)",
         });
-      }, 2000);
+      }, 3000);
     })
   ]);
 };

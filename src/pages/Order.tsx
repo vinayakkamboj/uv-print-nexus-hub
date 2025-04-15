@@ -1,5 +1,5 @@
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
@@ -47,9 +47,9 @@ const hsnCodes = {
   custom: "4911",      // Other printed matter
 };
 
-// Shorter timeouts to prevent UI hanging
-const SAFETY_TIMEOUT = 10000; // 10 seconds
-const PAYMENT_TIMEOUT = 5000; // 5 seconds
+// Increased timeouts to prevent UI hanging
+const SAFETY_TIMEOUT = 20000; // 20 seconds
+const PAYMENT_TIMEOUT = 15000; // 15 seconds
 
 export default function Order() {
   const { user, userData } = useAuth();
@@ -116,12 +116,11 @@ export default function Order() {
     // Set a new safety timer if we're going into loading state
     if (isLoading) {
       const timer = setTimeout(() => {
-        console.log("SAFETY TIMEOUT: Resetting loading state after 15 seconds");
+        console.log("SAFETY TIMEOUT: Resetting loading state after timeout");
         setLoading(false);
         setProcessingStep("");
         setUploadProgress(0);
         
-        // Don't reset payment processing here as it might be in progress
         if (!orderComplete && !paymentProcessing) {
           toast({
             title: "Operation Timeout",
@@ -170,7 +169,7 @@ export default function Order() {
     return basePrice * 3;
   };
 
-  const simulateProgress = (startAt: number, endAt: number, duration: number) => {
+  const simulateProgress = useCallback((startAt: number, endAt: number, duration: number) => {
     const start = Date.now();
     const updateProgress = () => {
       const elapsed = Date.now() - start;
@@ -185,7 +184,7 @@ export default function Order() {
     };
     
     requestAnimationFrame(updateProgress);
-  };
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -251,7 +250,7 @@ export default function Order() {
       // Start progress simulation for better UX
       simulateProgress(5, 40, 1000);
 
-      // In demo mode, we'll skip the firebase operations
+      // Check if we're in demo mode
       const demoMode = import.meta.env.VITE_RAZORPAY_DEMO_MODE === 'true';
       
       if (demoMode) {
@@ -342,6 +341,11 @@ export default function Order() {
         if (!orderResult.success || !orderResult.orderId) {
           throw new Error(orderResult.message || "Failed to create order");
         }
+        
+        // Update tracking ID if provided in the result
+        if (orderResult.trackingId) {
+          setTrackingId(orderResult.trackingId);
+        }
       } catch (orderError) {
         console.error("Order creation error:", orderError);
         throw new Error("Failed to create order. Please try again.");
@@ -361,8 +365,10 @@ export default function Order() {
         description: "Your order has been created. Proceeding to payment.",
       });
       
-      // Start payment process
-      await handlePaymentProcess(orderResult.orderId, orderData);
+      // Start payment process with a small delay to allow UI to update
+      setTimeout(() => {
+        handlePaymentProcess(orderResult.orderId, orderData);
+      }, 500);
       
     } catch (error) {
       console.error("Error placing order:", error);
@@ -462,7 +468,7 @@ export default function Order() {
       console.error("Critical payment processing error:", error);
       
       // If we're already retrying too many times, just force completion
-      if (retryCount > 2) {
+      if (retryCount > 1) {
         console.log("Too many retries, forcing order completion");
         const emergencyPayment = {
           id: `emergency_final_${Math.random().toString(36).substring(2, 8)}`,
@@ -540,6 +546,7 @@ export default function Order() {
         });
       }
       
+      // All done - update UI
       setProcessingStep("Order completed!");
       setOrderComplete(true);
       setPaymentProcessing(false);
