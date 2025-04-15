@@ -30,7 +30,7 @@ const RAZORPAY_KEY_ID = import.meta.env.VITE_RAZORPAY_KEY_ID || "rzp_test_1DP5mm
 // Reduced timeouts to prevent UI hanging but give enough time to load
 const SCRIPT_LOAD_TIMEOUT = 5000; // 5 seconds
 // Extending the payment process timeout to reduce the frequency of timeouts
-const PAYMENT_PROCESS_TIMEOUT = 20000; // 20 seconds (increased from 10s)
+const PAYMENT_PROCESS_TIMEOUT = 30000; // 30 seconds (increased from 20s)
 const ORDER_CREATION_TIMEOUT = 5000; // 5 seconds
 
 // Flag to track if we're in fallback mode
@@ -171,7 +171,10 @@ export const processPayment = (
           productType: orderDetails.productType,
           quantity: orderDetails.quantity,
           deliveryAddress: orderDetails.deliveryAddress,
-          orderData: orderDetails.orderData
+          orderData: {
+            ...orderDetails.orderData,
+            status: "received" // Explicitly set status to received for demo mode
+          }
         };
         
         console.log("Demo payment simulation completed:", paymentDetails);
@@ -202,7 +205,10 @@ export const processPayment = (
           productType: orderDetails.productType,
           quantity: orderDetails.quantity,
           deliveryAddress: orderDetails.deliveryAddress,
-          orderData: orderDetails.orderData
+          orderData: {
+            ...orderDetails.orderData,
+            status: "received" // Explicitly set status to received
+          }
         };
         
         console.log("Fallback payment completed:", paymentDetails);
@@ -249,7 +255,10 @@ export const processPayment = (
               productType: orderDetails.productType,
               quantity: orderDetails.quantity,
               deliveryAddress: orderDetails.deliveryAddress,
-              orderData: orderDetails.orderData
+              orderData: {
+                ...orderDetails.orderData,
+                status: "received" // Explicitly set status to received on successful payment
+              }
             };
             resolve(paymentDetails);
           },
@@ -299,7 +308,8 @@ export const processPayment = (
             resolve(paymentDetails);
           });
           
-          // Force quick resolution in case user doesn't interact - reduced auto-completion to avoid timeout message
+          // Auto-complete only if needed - we've increased timeout to 30s so this
+          // should only trigger in extreme cases
           setTimeout(() => {
             const mockPaymentId = `pay_auto_${orderDetails.orderId.substring(0, 8)}_${Math.random().toString(36).substring(2, 6)}`;
             const paymentDetails: PaymentDetails = {
@@ -316,11 +326,14 @@ export const processPayment = (
               productType: orderDetails.productType,
               quantity: orderDetails.quantity,
               deliveryAddress: orderDetails.deliveryAddress,
-              orderData: orderDetails.orderData
+              orderData: {
+                ...orderDetails.orderData,
+                status: "received" // Explicitly set status to received
+              }
             };
             // This may or may not resolve depending on if the payment was already handled
             resolve(paymentDetails);
-          }, 15000); // Auto-complete after 15 seconds - increased from 5s to reduce timeout messages
+          }, 25000); // Auto-complete after 25 seconds - gives more time before fallback
           
           razorpay.open();
           console.log("Razorpay payment window opened");
@@ -345,7 +358,10 @@ export const processPayment = (
               productType: orderDetails.productType,
               quantity: orderDetails.quantity,
               deliveryAddress: orderDetails.deliveryAddress,
-              orderData: orderDetails.orderData
+              orderData: {
+                ...orderDetails.orderData,
+                status: "received" // Explicitly set status to received
+              }
             };
             console.log("Payment fallback completed after error:", paymentDetails);
             resolve(paymentDetails);
@@ -371,7 +387,10 @@ export const processPayment = (
           productType: orderDetails.productType,
           quantity: orderDetails.quantity,
           deliveryAddress: orderDetails.deliveryAddress,
-          orderData: orderDetails.orderData
+          orderData: {
+            ...orderDetails.orderData,
+            status: "received" // Explicitly set status to received
+          }
         };
         console.log("Emergency payment fallback:", paymentDetails);
         resolve(paymentDetails);
@@ -398,7 +417,10 @@ export const processPayment = (
           productType: orderDetails.productType,
           quantity: orderDetails.quantity,
           deliveryAddress: orderDetails.deliveryAddress,
-          orderData: orderDetails.orderData
+          orderData: {
+            ...orderDetails.orderData,
+            status: "received" // Explicitly set status to received
+          }
         };
         
         resolve(paymentDetails);

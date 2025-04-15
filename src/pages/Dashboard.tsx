@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -30,7 +29,6 @@ interface Order {
     status: string;
     timestamp: any;
   };
-  // Add the missing properties
   paymentStatus?: string;
   trackingId?: string;
   userId?: string;
@@ -93,49 +91,49 @@ export default function Dashboard() {
     if (userData?.gstNumber) setGstNumber(userData.gstNumber);
   }, [userData]);
 
+  const fetchUserOrders = async () => {
+    if (!userData?.uid) return;
+    
+    try {
+      setLoading(true);
+      
+      const ordersData = await getUserOrders(userData.uid);
+      console.log("Fetched orders:", ordersData);
+      
+      const typedOrders = ordersData.map(order => ({
+        ...order,
+        status: (order.status || "pending_payment") as "pending_payment" | "received" | "processing" | "printed" | "shipped",
+        timestamp: order.timestamp || new Date()
+      }));
+      
+      setOrders(typedOrders);
+
+      const invoicesQuery = query(
+        collection(db, "invoices"),
+        where("userId", "==", userData.uid)
+      );
+      const invoicesSnapshot = await getDocs(invoicesQuery);
+      const invoicesData = invoicesSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Invoice[];
+      setInvoices(invoicesData);
+      
+      console.log(`Loaded ${ordersData.length} orders and ${invoicesData.length} invoices`);
+    } catch (error) {
+      console.error("Error fetching user data:", error);
+      toast({
+        title: "Error",
+        description: "Failed to load your data. Please refresh the page.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const fetchUserData = async () => {
-      if (!userData?.uid) return;
-
-      try {
-        setLoading(true);
-        
-        const ordersData = await getUserOrders(userData.uid);
-        console.log("Fetched orders:", ordersData);
-        
-        const typedOrders = ordersData.map(order => ({
-          ...order,
-          status: (order.status || "pending_payment") as "pending_payment" | "received" | "processing" | "printed" | "shipped",
-          timestamp: order.timestamp || new Date()
-        }));
-        
-        setOrders(typedOrders);
-
-        const invoicesQuery = query(
-          collection(db, "invoices"),
-          where("userId", "==", userData.uid)
-        );
-        const invoicesSnapshot = await getDocs(invoicesQuery);
-        const invoicesData = invoicesSnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        })) as Invoice[];
-        setInvoices(invoicesData);
-        
-        console.log(`Loaded ${ordersData.length} orders and ${invoicesData.length} invoices`);
-      } catch (error) {
-        console.error("Error fetching user data:", error);
-        toast({
-          title: "Error",
-          description: "Failed to load your data. Please refresh the page.",
-          variant: "destructive",
-        });
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchUserData();
+    fetchUserOrders();
   }, [userData, toast]);
 
   const getStatusColor = (status: string) => {
@@ -187,10 +185,8 @@ export default function Dashboard() {
         description: "Please wait while we initialize the payment...",
       });
       
-      // Initialize Razorpay
       await initializeRazorpay();
       
-      // Create a Razorpay order
       const razorpayOrderData = await createRazorpayOrder(
         order.id,
         order.totalAmount,
@@ -198,7 +194,6 @@ export default function Dashboard() {
         userData.email || order.customerEmail || ""
       );
       
-      // Process the payment
       const paymentResult = await processPayment({
         orderId: order.id,
         razorpayOrderId: razorpayOrderData.id,
@@ -215,7 +210,8 @@ export default function Dashboard() {
           ...order,
           userId: userData.uid,
           customerName: userData.name || order.customerName,
-          customerEmail: userData.email || order.customerEmail
+          customerEmail: userData.email || order.customerEmail,
+          status: "received"
         }
       });
       
@@ -225,13 +221,12 @@ export default function Dashboard() {
           description: "Your payment has been successfully processed.",
         });
         
-        // Update orders list with the new payment status
         setOrders(prevOrders => 
           prevOrders.map(o => 
             o.id === order.id 
               ? { 
                   ...o, 
-                  status: "received" as "pending_payment" | "received" | "processing" | "printed" | "shipped",
+                  status: "received",
                   paymentStatus: "paid", 
                   paymentDetails: {
                     id: paymentResult.id,
@@ -245,28 +240,14 @@ export default function Dashboard() {
           )
         );
         
-        // Reload data after a short delay
-        setTimeout(() => {
-          // Fetch orders again to refresh the list
-          if (userData?.uid) {
-            getUserOrders(userData.uid)
-              .then(ordersData => {
-                const typedOrders = ordersData.map(order => ({
-                  ...order,
-                  status: (order.status || "pending_payment") as "pending_payment" | "received" | "processing" | "printed" | "shipped",
-                  timestamp: order.timestamp || new Date()
-                }));
-                setOrders(typedOrders);
-              })
-              .catch(err => console.error("Error refreshing orders after payment:", err));
-          }
-        }, 1500);
+        fetchUserOrders();
       } else {
         toast({
           title: "Payment Failed",
           description: "There was an issue processing your payment. Please try again.",
           variant: "destructive",
         });
+        fetchUserOrders();
       }
     } catch (error) {
       console.error("Payment retry error:", error);
@@ -275,6 +256,7 @@ export default function Dashboard() {
         description: "An unexpected error occurred. Please try again later.",
         variant: "destructive",
       });
+      fetchUserOrders();
     } finally {
       setProcessingPayment(false);
     }
@@ -399,19 +381,18 @@ export default function Dashboard() {
     }
   };
 
-  // New function to get pending orders
   const getPendingOrders = () => {
     return orders.filter(order => 
       order.status === "pending_payment" || 
-      order.paymentStatus === "failed"
+      (order.paymentStatus === "failed" || order.paymentStatus === "pending")
     );
   };
 
-  // New function to get completed orders (not pending payment)
   const getCompletedOrders = () => {
     return orders.filter(order => 
       order.status !== "pending_payment" && 
-      order.paymentStatus !== "failed"
+      order.paymentStatus !== "failed" &&
+      order.paymentStatus !== "pending"
     );
   };
 
