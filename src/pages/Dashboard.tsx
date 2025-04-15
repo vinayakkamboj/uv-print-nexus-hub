@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { collection, query, where, getDocs, doc, updateDoc, orderBy } from "firebase/firestore";
@@ -72,6 +72,8 @@ export default function Dashboard() {
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
   const [processingPayment, setProcessingPayment] = useState(false);
+  const [lastPaymentTime, setLastPaymentTime] = useState<number | null>(null);
+  const [activeTab, setActiveTab] = useState("orders");
   const navigate = useNavigate();
 
   const [name, setName] = useState(userData?.name || "");
@@ -134,7 +136,33 @@ export default function Dashboard() {
 
   useEffect(() => {
     fetchUserOrders();
-  }, [userData, toast]);
+    
+    initializeRazorpay().catch(error => {
+      console.error("Error initializing Razorpay:", error);
+    });
+  }, [userData]);
+
+  const isPendingOrder = useCallback((order: Order) => {
+    return (
+      order.status === "pending_payment" || 
+      order.paymentStatus === "failed" || 
+      order.paymentStatus === "pending"
+    );
+  }, []);
+
+  const updateOrderAfterPayment = useCallback((orderId: string, paymentSuccess: boolean) => {
+    setOrders(prevOrders => 
+      prevOrders.map(order => 
+        order.id === orderId
+          ? {
+              ...order,
+              status: paymentSuccess ? "received" : "pending_payment",
+              paymentStatus: paymentSuccess ? "paid" : "failed"
+            }
+          : order
+      )
+    );
+  }, []);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -215,39 +243,27 @@ export default function Dashboard() {
         }
       });
       
+      console.log("Payment result received:", paymentResult);
+      
       if (paymentResult.status === 'completed') {
         toast({
           title: "Payment Successful",
           description: "Your payment has been successfully processed.",
         });
         
-        setOrders(prevOrders => 
-          prevOrders.map(o => 
-            o.id === order.id 
-              ? { 
-                  ...o, 
-                  status: "received",
-                  paymentStatus: "paid", 
-                  paymentDetails: {
-                    id: paymentResult.id,
-                    paymentId: paymentResult.paymentId,
-                    method: paymentResult.method,
-                    status: "completed",
-                    timestamp: paymentResult.timestamp
-                  }
-                }
-              : o
-          )
-        );
-        
-        fetchUserOrders();
+        updateOrderAfterPayment(order.id, true);
+        setLastPaymentTime(Date.now());
+        setActiveTab("orders");
+        await fetchUserOrders();
       } else {
         toast({
           title: "Payment Failed",
           description: "There was an issue processing your payment. Please try again.",
           variant: "destructive",
         });
-        fetchUserOrders();
+        
+        updateOrderAfterPayment(order.id, false);
+        await fetchUserOrders();
       }
     } catch (error) {
       console.error("Payment retry error:", error);
@@ -256,6 +272,7 @@ export default function Dashboard() {
         description: "An unexpected error occurred. Please try again later.",
         variant: "destructive",
       });
+      
       fetchUserOrders();
     } finally {
       setProcessingPayment(false);
@@ -382,18 +399,11 @@ export default function Dashboard() {
   };
 
   const getPendingOrders = () => {
-    return orders.filter(order => 
-      order.status === "pending_payment" || 
-      (order.paymentStatus === "failed" || order.paymentStatus === "pending")
-    );
+    return orders.filter(order => isPendingOrder(order));
   };
 
   const getCompletedOrders = () => {
-    return orders.filter(order => 
-      order.status !== "pending_payment" && 
-      order.paymentStatus !== "failed" &&
-      order.paymentStatus !== "pending"
-    );
+    return orders.filter(order => !isPendingOrder(order));
   };
 
   return (
@@ -444,7 +454,7 @@ export default function Dashboard() {
         </Card>
       </div>
 
-      <Tabs defaultValue="orders">
+      <Tabs defaultValue="orders" value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="mb-6">
           <TabsTrigger value="orders" className="text-base">
             <ShoppingBag className="h-4 w-4 mr-2" /> Orders

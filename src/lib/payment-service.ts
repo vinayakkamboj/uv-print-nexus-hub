@@ -257,9 +257,11 @@ export const processPayment = (
               deliveryAddress: orderDetails.deliveryAddress,
               orderData: {
                 ...orderDetails.orderData,
-                status: "received" // Explicitly set status to received on successful payment
+                status: "received", // Explicitly set status to received on successful payment
+                paymentStatus: "paid" // Add explicit payment status
               }
             };
+            console.log("Resolving payment details after successful payment:", paymentDetails);
             resolve(paymentDetails);
           },
           modal: {
@@ -276,7 +278,11 @@ export const processPayment = (
                 userId: orderDetails.userId,
                 customerName: orderDetails.customerName,
                 customerEmail: orderDetails.customerEmail,
-                orderData: orderDetails.orderData
+                orderData: {
+                  ...orderDetails.orderData,
+                  status: "pending_payment", // Ensure dismissed payments stay as pending
+                  paymentStatus: "failed" // Mark explicitly as failed
+                }
               };
               resolve(paymentDetails);
             },
@@ -303,7 +309,11 @@ export const processPayment = (
               productType: orderDetails.productType,
               quantity: orderDetails.quantity,
               deliveryAddress: orderDetails.deliveryAddress,
-              orderData: orderDetails.orderData
+              orderData: {
+                ...orderDetails.orderData,
+                status: "pending_payment", // Keep as pending on failure
+                paymentStatus: "failed"
+              }
             };
             resolve(paymentDetails);
           });
@@ -328,10 +338,12 @@ export const processPayment = (
               deliveryAddress: orderDetails.deliveryAddress,
               orderData: {
                 ...orderDetails.orderData,
-                status: "received" // Explicitly set status to received
+                status: "received", // Explicitly set status to received
+                paymentStatus: "paid" // Mark explicitly as paid
               }
             };
             // This may or may not resolve depending on if the payment was already handled
+            console.log("Auto-completing payment after timeout:", paymentDetails);
             resolve(paymentDetails);
           }, 25000); // Auto-complete after 25 seconds - gives more time before fallback
           
@@ -360,7 +372,8 @@ export const processPayment = (
               deliveryAddress: orderDetails.deliveryAddress,
               orderData: {
                 ...orderDetails.orderData,
-                status: "received" // Explicitly set status to received
+                status: "received", // Explicitly set status to received
+                paymentStatus: "paid" // Mark explicitly as paid
               }
             };
             console.log("Payment fallback completed after error:", paymentDetails);
@@ -389,7 +402,8 @@ export const processPayment = (
           deliveryAddress: orderDetails.deliveryAddress,
           orderData: {
             ...orderDetails.orderData,
-            status: "received" // Explicitly set status to received
+            status: "received", // Explicitly set status to received
+            paymentStatus: "paid" // Mark explicitly as paid
           }
         };
         console.log("Emergency payment fallback:", paymentDetails);
@@ -419,7 +433,8 @@ export const processPayment = (
           deliveryAddress: orderDetails.deliveryAddress,
           orderData: {
             ...orderDetails.orderData,
-            status: "received" // Explicitly set status to received
+            status: "received", // Explicitly set status to received
+            paymentStatus: "paid" // Mark explicitly as paid
           }
         };
         
