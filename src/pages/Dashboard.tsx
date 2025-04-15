@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -15,7 +14,6 @@ import { useToast } from "@/hooks/use-toast";
 import { ShoppingBag, FileText, Settings, Clock, Package, CheckCircle, Truck, CreditCard, Download, AlertCircle } from "lucide-react";
 import { getUserOrders } from "@/lib/invoice-service";
 
-// Define order and invoice types
 interface Order {
   id: string;
   productType: string;
@@ -32,7 +30,6 @@ interface Order {
   };
 }
 
-// Define Invoice interface
 interface Invoice {
   id: string;
   invoiceId?: string;
@@ -45,12 +42,11 @@ interface Invoice {
   userId?: string;
 }
 
-// Interface for OrderData from invoice-service
 interface OrderData {
   id: string;
   productType: string;
   quantity: number;
-  status: string; // This needs to be cast to the appropriate type
+  status: string;
   timestamp: any;
   totalAmount: number;
   paymentDetails?: {
@@ -68,14 +64,12 @@ export default function Dashboard() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
-  
-  // Profile update states
+
   const [name, setName] = useState(userData?.name || "");
   const [phone, setPhone] = useState(userData?.phone || "");
   const [gstNumber, setGstNumber] = useState(userData?.gstNumber || "");
   const [updatingProfile, setUpdatingProfile] = useState(false);
-  
-  // Password change states
+
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -95,20 +89,17 @@ export default function Dashboard() {
       try {
         setLoading(true);
         
-        // Use the new getUserOrders function to fetch all orders for this user
         const ordersData = await getUserOrders(userData.uid);
+        console.log("Fetched orders:", ordersData);
         
-        // Map OrderData to Order with the correct status type and ensure timestamp is handled properly
         const typedOrders = ordersData.map(order => ({
           ...order,
-          status: order.status as "pending_payment" | "received" | "processing" | "printed" | "shipped",
-          // Ensure timestamp exists (use empty object as fallback if undefined)
-          timestamp: order.timestamp || {}
+          status: (order.status || "pending_payment") as "pending_payment" | "received" | "processing" | "printed" | "shipped",
+          timestamp: order.timestamp || new Date()
         }));
         
         setOrders(typedOrders);
 
-        // Fetch invoices
         const invoicesQuery = query(
           collection(db, "invoices"),
           where("userId", "==", userData.uid)
@@ -136,7 +127,6 @@ export default function Dashboard() {
     fetchUserData();
   }, [userData, toast]);
 
-  // Get status color
   const getStatusColor = (status: string) => {
     switch (status) {
       case "pending_payment":
@@ -154,7 +144,6 @@ export default function Dashboard() {
     }
   };
 
-  // Get status icon
   const getStatusIcon = (status: string) => {
     switch (status) {
       case "pending_payment":
@@ -172,17 +161,24 @@ export default function Dashboard() {
     }
   };
 
-  // Function to find the invoice for an order
   const findInvoiceForOrder = (orderId: string) => {
     return invoices.find(invoice => invoice.orderId === orderId);
   };
-  
-  // Handle profile update
+
+  const handleRetryPayment = (order: Order) => {
+    toast({
+      title: "Payment Retry",
+      description: "Payment retry functionality will be implemented soon.",
+    });
+    
+    // In a real implementation, you would redirect to a payment page
+    // or open a payment modal for this specific order
+  };
+
   const handleUpdateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
     
-    // Validate GST number if provided
     if (gstNumber && !isValidGSTIN(gstNumber)) {
       toast({
         title: "Invalid GST Number",
@@ -195,7 +191,6 @@ export default function Dashboard() {
     setUpdatingProfile(true);
     
     try {
-      // Update profile in Firebase
       const userRef = doc(db, "users", user.uid);
       await updateDoc(userRef, {
         name,
@@ -203,7 +198,6 @@ export default function Dashboard() {
         gstNumber
       });
       
-      // Update context
       if (updateUserProfile) {
         updateUserProfile({
           ...userData!,
@@ -228,8 +222,7 @@ export default function Dashboard() {
       setUpdatingProfile(false);
     }
   };
-  
-  // Handle password change
+
   const handleChangePassword = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
@@ -259,7 +252,6 @@ export default function Dashboard() {
     setChangingPassword(true);
     
     try {
-      // First reauthenticate the user
       const credential = EmailAuthProvider.credential(
         user.email || "",
         currentPassword
@@ -267,10 +259,8 @@ export default function Dashboard() {
       
       await reauthenticateWithCredential(user, credential);
       
-      // Then update password
       await updatePassword(user, newPassword);
       
-      // Clear form
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
@@ -309,7 +299,6 @@ export default function Dashboard() {
       <h1 className="text-3xl font-bold mb-2">Dashboard</h1>
       <p className="text-gray-600 mb-8">Welcome back, {userData?.name || "User"}</p>
 
-      {/* Quick Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         <Card>
           <CardHeader className="pb-2">
@@ -353,7 +342,6 @@ export default function Dashboard() {
         </Card>
       </div>
 
-      {/* Main Dashboard Content */}
       <Tabs defaultValue="orders">
         <TabsList className="mb-6">
           <TabsTrigger value="orders" className="text-base">
@@ -394,6 +382,7 @@ export default function Dashboard() {
                         <th className="text-left py-3 px-4 font-medium">Status</th>
                         <th className="text-left py-3 px-4 font-medium">Amount</th>
                         <th className="text-left py-3 px-4 font-medium">Invoice</th>
+                        <th className="text-left py-3 px-4 font-medium">Actions</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -403,16 +392,24 @@ export default function Dashboard() {
                           if (typeof a.timestamp === 'object' && a.timestamp.toMillis) {
                             return b.timestamp.toMillis() - a.timestamp.toMillis();
                           }
-                          // Fallback if timestamp is a Date object or similar
                           const aTime = a.timestamp instanceof Date ? a.timestamp.getTime() : 0;
                           const bTime = b.timestamp instanceof Date ? b.timestamp.getTime() : 0;
                           return bTime - aTime;
                         })
                         .map((order) => {
                           const orderInvoice = findInvoiceForOrder(order.id);
+                          const paymentFailed = order.paymentStatus === "failed";
+                          
                           return (
                             <tr key={order.id} className="border-b hover:bg-gray-50">
-                              <td className="py-3 px-4 font-mono text-sm">{order.id}</td>
+                              <td className="py-3 px-4 font-mono text-sm">
+                                {order.id.length > 10 ? order.id.substring(0, 10) + '...' : order.id}
+                                {order.trackingId && (
+                                  <div className="text-xs text-gray-500 mt-1">
+                                    {order.trackingId}
+                                  </div>
+                                )}
+                              </td>
                               <td className="py-3 px-4">{order.productType}</td>
                               <td className="py-3 px-4">{order.quantity}</td>
                               <td className="py-3 px-4">
@@ -429,6 +426,11 @@ export default function Dashboard() {
                                     {order.status === "pending_payment" ? "Payment Pending" : order.status}
                                   </span>
                                 </div>
+                                {paymentFailed && (
+                                  <div className="mt-1 text-xs text-red-600">
+                                    Payment failed
+                                  </div>
+                                )}
                               </td>
                               <td className="py-3 px-4">{formatCurrency(order.totalAmount)}</td>
                               <td className="py-3 px-4">
@@ -444,6 +446,19 @@ export default function Dashboard() {
                                   </a>
                                 ) : (
                                   <span className="text-gray-400">-</span>
+                                )}
+                              </td>
+                              <td className="py-3 px-4">
+                                {(order.status === "pending_payment" || paymentFailed) && (
+                                  <Button 
+                                    size="sm" 
+                                    variant="outline" 
+                                    onClick={() => handleRetryPayment(order)}
+                                    className="text-xs"
+                                  >
+                                    <CreditCard className="h-3 w-3 mr-1" />
+                                    Retry Payment
+                                  </Button>
                                 )}
                               </td>
                             </tr>

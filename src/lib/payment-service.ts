@@ -1,4 +1,3 @@
-
 interface RazorpayResponse {
   razorpay_payment_id: string;
   razorpay_order_id: string;
@@ -13,6 +12,13 @@ export interface PaymentDetails {
   timestamp: Date;
   paymentId?: string;
   method?: string;
+  userId?: string;
+  customerName?: string;
+  customerEmail?: string;
+  productType?: string;
+  quantity?: number;
+  deliveryAddress?: string;
+  orderData?: any;
 }
 
 // Use import.meta.env instead of process.env for Vite apps
@@ -132,6 +138,11 @@ export const processPayment = (
     customerName: string;
     customerEmail: string;
     description: string;
+    userId?: string;
+    productType?: string;
+    quantity?: number;
+    deliveryAddress?: string;
+    orderData?: any;
   }
 ): Promise<PaymentDetails> => {
   console.log("Processing payment with Razorpay...");
@@ -152,6 +163,13 @@ export const processPayment = (
           timestamp: new Date(),
           paymentId: mockPaymentId,
           method: 'Razorpay (Demo)',
+          userId: orderDetails.userId,
+          customerName: orderDetails.customerName,
+          customerEmail: orderDetails.customerEmail,
+          productType: orderDetails.productType,
+          quantity: orderDetails.quantity,
+          deliveryAddress: orderDetails.deliveryAddress,
+          orderData: orderDetails.orderData
         };
         
         console.log("Demo payment simulation completed:", paymentDetails);
@@ -176,6 +194,13 @@ export const processPayment = (
           timestamp: new Date(),
           paymentId: mockPaymentId,
           method: 'Razorpay (Fallback)',
+          userId: orderDetails.userId,
+          customerName: orderDetails.customerName,
+          customerEmail: orderDetails.customerEmail,
+          productType: orderDetails.productType,
+          quantity: orderDetails.quantity,
+          deliveryAddress: orderDetails.deliveryAddress,
+          orderData: orderDetails.orderData
         };
         
         console.log("Fallback payment completed:", paymentDetails);
@@ -216,6 +241,13 @@ export const processPayment = (
               timestamp: new Date(),
               paymentId: response.razorpay_payment_id || `manual_pay_${Math.random().toString(36).substring(2, 8)}`,
               method: 'Razorpay',
+              userId: orderDetails.userId,
+              customerName: orderDetails.customerName,
+              customerEmail: orderDetails.customerEmail,
+              productType: orderDetails.productType,
+              quantity: orderDetails.quantity,
+              deliveryAddress: orderDetails.deliveryAddress,
+              orderData: orderDetails.orderData
             };
             resolve(paymentDetails);
           },
@@ -230,6 +262,10 @@ export const processPayment = (
                 status: 'failed',
                 timestamp: new Date(),
                 method: 'Razorpay (Cancelled)',
+                userId: orderDetails.userId,
+                customerName: orderDetails.customerName,
+                customerEmail: orderDetails.customerEmail,
+                orderData: orderDetails.orderData
               };
               resolve(paymentDetails);
             },
@@ -250,6 +286,13 @@ export const processPayment = (
               status: 'failed',
               timestamp: new Date(),
               method: 'Razorpay (Payment Failed)',
+              userId: orderDetails.userId,
+              customerName: orderDetails.customerName,
+              customerEmail: orderDetails.customerEmail,
+              productType: orderDetails.productType,
+              quantity: orderDetails.quantity,
+              deliveryAddress: orderDetails.deliveryAddress,
+              orderData: orderDetails.orderData
             };
             resolve(paymentDetails);
           });
@@ -265,6 +308,13 @@ export const processPayment = (
               timestamp: new Date(),
               paymentId: mockPaymentId,
               method: 'Razorpay (Auto-Completed)',
+              userId: orderDetails.userId,
+              customerName: orderDetails.customerName,
+              customerEmail: orderDetails.customerEmail,
+              productType: orderDetails.productType,
+              quantity: orderDetails.quantity,
+              deliveryAddress: orderDetails.deliveryAddress,
+              orderData: orderDetails.orderData
             };
             // This may or may not resolve depending on if the payment was already handled
             resolve(paymentDetails);
@@ -287,6 +337,13 @@ export const processPayment = (
               timestamp: new Date(),
               paymentId: mockPaymentId,
               method: 'Razorpay (Error Fallback)',
+              userId: orderDetails.userId,
+              customerName: orderDetails.customerName,
+              customerEmail: orderDetails.customerEmail,
+              productType: orderDetails.productType,
+              quantity: orderDetails.quantity,
+              deliveryAddress: orderDetails.deliveryAddress,
+              orderData: orderDetails.orderData
             };
             console.log("Payment fallback completed after error:", paymentDetails);
             resolve(paymentDetails);
@@ -306,6 +363,13 @@ export const processPayment = (
           timestamp: new Date(),
           paymentId: mockPaymentId,
           method: 'Razorpay (Emergency Fallback)',
+          userId: orderDetails.userId,
+          customerName: orderDetails.customerName,
+          customerEmail: orderDetails.customerEmail,
+          productType: orderDetails.productType,
+          quantity: orderDetails.quantity,
+          deliveryAddress: orderDetails.deliveryAddress,
+          orderData: orderDetails.orderData
         };
         console.log("Emergency payment fallback:", paymentDetails);
         resolve(paymentDetails);
@@ -326,6 +390,13 @@ export const processPayment = (
           timestamp: new Date(),
           paymentId: mockPaymentId,
           method: 'Razorpay (Master Timeout)',
+          userId: orderDetails.userId,
+          customerName: orderDetails.customerName,
+          customerEmail: orderDetails.customerEmail,
+          productType: orderDetails.productType,
+          quantity: orderDetails.quantity,
+          deliveryAddress: orderDetails.deliveryAddress,
+          orderData: orderDetails.orderData
         };
         
         resolve(paymentDetails);

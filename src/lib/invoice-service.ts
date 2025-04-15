@@ -3,7 +3,7 @@ import { sendInvoiceEmail } from "./email-service";
 import { generateId } from "./utils";
 import { PaymentDetails } from "./payment-service";
 import { db } from "./firebase";
-import { collection, addDoc, serverTimestamp, doc, updateDoc, where, query, getDocs, orderBy } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp, doc, updateDoc, where, query, getDocs, orderBy, limit } from "firebase/firestore";
 
 // Use import.meta.env instead of process.env for Vite apps
 const DEMO_MODE = import.meta.env.VITE_RAZORPAY_DEMO_MODE === 'true';
@@ -11,7 +11,7 @@ const DEMO_MODE = import.meta.env.VITE_RAZORPAY_DEMO_MODE === 'true';
 // Increased timeouts to prevent UI freezing
 const ORDER_CREATION_TIMEOUT = 5000;
 const INVOICE_GENERATION_TIMEOUT = 3000;
-const QUERY_TIMEOUT = 6000;
+const QUERY_TIMEOUT = 8000; // Increased timeout for query operations
 
 export interface OrderData {
   id: string;
@@ -27,13 +27,15 @@ export interface OrderData {
   hsnCode?: string;
   status?: string;
   timestamp?: any;
-  // Added tracking fields
+  // Tracking and relationship fields
   trackingId?: string;
   paymentStatus?: string;
   paymentDetails?: any;
   lastUpdated?: any;
   fileUrl?: string;
   fileName?: string;
+  // Invoice relationship
+  invoiceId?: string;
 }
 
 // Flag to track if we're in fallback mode
@@ -127,13 +129,53 @@ export const updateOrderAfterPayment = async (orderId: string, paymentDetails: P
 }> => {
   console.log("Updating order after payment:", { orderId, paymentDetails });
   
-  // Check if we're in demo mode or already in fallback mode
+  // If we're in demo mode or in fallback mode, let's still attempt to add the demo data to Firestore
+  // This ensures orders show up in the dashboard even in demo/fallback mode
   if (DEMO_MODE || isInFallbackMode) {
-    console.log("Order updated with payment details (DEMO/FALLBACK MODE)");
-    return {
-      success: true,
-      message: "Order updated with payment details (DEMO/FALLBACK MODE)",
-    };
+    console.log("Attempting to create fallback order document for dashboard visibility");
+    
+    try {
+      // Check if this is a mock/emergency order ID and create a new document instead of updating
+      if (orderId.startsWith("order_") || orderId.startsWith("emergency_")) {
+        // Extract tracking ID from the mock order ID if possible
+        const trackingIdMatch = orderId.match(/TRK-[^_]+/);
+        const trackingId = trackingIdMatch ? trackingIdMatch[0] : `TRK-DEMO-${generateId(8).toUpperCase()}`;
+        
+        // Create a new order document that will show up in the dashboard
+        const demoOrderRef = await addDoc(collection(db, "orders"), {
+          id: orderId, // Include the original mock ID
+          userId: paymentDetails.userId || "demo-user", // Ensure we have a userId
+          productType: paymentDetails.productType || "sticker",
+          quantity: paymentDetails.quantity || 100,
+          deliveryAddress: paymentDetails.deliveryAddress || "Demo Address",
+          totalAmount: paymentDetails.amount,
+          customerName: paymentDetails.customerName || "Demo Customer",
+          customerEmail: paymentDetails.customerEmail || "demo@example.com",
+          status: "received", // Mark as received since payment is complete
+          trackingId: trackingId,
+          paymentStatus: paymentDetails.status === 'completed' ? "paid" : "failed",
+          paymentDetails: {
+            id: paymentDetails.id,
+            paymentId: paymentDetails.paymentId,
+            method: paymentDetails.method,
+            status: paymentDetails.status,
+            timestamp: paymentDetails.timestamp,
+          },
+          timestamp: new Date(), // Use JavaScript Date object for consistent handling
+          lastUpdated: new Date(),
+        });
+        
+        console.log("Created fallback order document with ID:", demoOrderRef.id);
+        
+        return {
+          success: true,
+          message: "Created fallback order document for dashboard visibility",
+        };
+      }
+    } catch (fallbackError) {
+      console.error("Error creating fallback order:", fallbackError);
+      // Continue with the original flow even if fallback creation fails
+    }
   }
   
   // Use a timeout to prevent hanging on Firebase operations
@@ -164,6 +206,31 @@ export const updateOrderAfterPayment = async (orderId: string, paymentDetails: P
       } catch (firebaseError) {
         console.error("Firebase error updating order:", firebaseError);
         isInFallbackMode = true;
+        
+        // Try to create a new order document if update fails
+        try {
+          if (paymentDetails.orderData) {
+            const newOrderRef = await addDoc(collection(db, "orders"), {
+              ...paymentDetails.orderData,
+              id: orderId, // Keep original order ID for reference
+              status: "received",
+              paymentStatus: paymentDetails.status === 'completed' ? "paid" : "failed",
+              paymentDetails: {
+                id: paymentDetails.id,
+                paymentId: paymentDetails.paymentId,
+                method: paymentDetails.method,
+                status: paymentDetails.status,
+                timestamp: paymentDetails.timestamp,
+              },
+              timestamp: new Date(),
+              lastUpdated: new Date(),
+            });
+            
+            console.log("Created new order document after update failure:", newOrderRef.id);
+          }
+        } catch (fallbackError) {
+          console.error("Error creating fallback after update failure:", fallbackError);
+        }
         
         // Return success even if Firebase fails
         return {
@@ -236,32 +303,65 @@ export const createAndSendInvoice = async (orderData: OrderData, paymentDetails:
   const mockPdfUrl = `https://example.com/invoices/${invoiceId}_${orderData.id}.pdf`;
   const pdfUrl = mockPdfUrl;
   
-  // Check if we're in demo mode (no Firebase writes)
-  if (!DEMO_MODE) {
-    // Fire and forget - don't wait for this to complete
-    (async () => {
-      try {
-        // Store invoice data in Firestore with a timeout
-        const invoiceRef = await addDoc(collection(db, "invoices"), {
-          invoiceId,
-          orderId: orderData.id,
-          userId: orderData.userId,
-          customerName: orderData.customerName,
-          customerEmail: orderData.customerEmail,
-          totalAmount: orderData.totalAmount,
-          paymentId: paymentDetails.paymentId,
-          paymentMethod: paymentDetails.method,
-          trackingId, // Add tracking ID to invoices
-          pdfUrl, // In a real app, this would be the actual URL
-          createdAt: serverTimestamp(),
-        });
-        
-        console.log("Invoice stored in database with ID:", invoiceRef.id);
-      } catch (firebaseError) {
-        console.error("Firebase error storing invoice:", firebaseError);
-        // Continue even if storing in Firebase fails
+  // Store invoice data in Firestore
+  try {
+    // Include additional data to help with relationship management
+    const invoiceRef = await addDoc(collection(db, "invoices"), {
+      invoiceId,
+      orderId: orderData.id,
+      userId: orderData.userId,
+      trackingId, // Ensure tracking ID is stored with invoice
+      customerName: orderData.customerName,
+      customerEmail: orderData.customerEmail,
+      totalAmount: orderData.totalAmount,
+      paymentId: paymentDetails.paymentId,
+      paymentMethod: paymentDetails.method,
+      pdfUrl,
+      createdAt: serverTimestamp(),
+      orderDetails: {
+        productType: orderData.productType,
+        quantity: orderData.quantity,
+        specifications: orderData.specifications,
+        status: "received" // Match the order status
       }
-    })();
+    });
+    
+    console.log("Invoice stored in database with ID:", invoiceRef.id);
+    
+    // Update the order with the invoice ID for relationship tracking
+    try {
+      if (!orderData.id.startsWith("order_") && !orderData.id.startsWith("emergency_")) {
+        const orderRef = doc(db, "orders", orderData.id);
+        await updateDoc(orderRef, {
+          invoiceId: invoiceId, // Link the order to this invoice
+          lastUpdated: serverTimestamp(),
+        });
+        console.log("Order updated with invoice ID reference");
+      } else {
+        // For mock orders, try to find if we created a real document and update it
+        const ordersQuery = query(
+          collection(db, "orders"),
+          where("id", "==", orderData.id),
+          limit(1)
+        );
+        
+        const ordersSnapshot = await getDocs(ordersQuery);
+        if (!ordersSnapshot.empty) {
+          const realOrderDoc = ordersSnapshot.docs[0];
+          await updateDoc(doc(db, "orders", realOrderDoc.id), {
+            invoiceId: invoiceId,
+            lastUpdated: serverTimestamp(),
+          });
+          console.log("Found and updated real order document with invoice ID");
+        }
+      }
+    } catch (updateError) {
+      console.error("Error updating order with invoice ID:", updateError);
+      // Continue despite this error
+    }
+  } catch (firebaseError) {
+    console.error("Firebase error storing invoice:", firebaseError);
+    // Continue even if storing in Firebase fails
   }
   
   console.log("Sending invoice email...");
@@ -292,7 +392,7 @@ export const createAndSendInvoice = async (orderData: OrderData, paymentDetails:
   };
 };
 
-// Function to fetch all orders for a user
+// Function to fetch all orders for a user - FIXED to properly handle various order sources
 export const getUserOrders = async (userId: string): Promise<OrderData[]> => {
   try {
     if (DEMO_MODE) {
@@ -334,13 +434,14 @@ export const getUserOrders = async (userId: string): Promise<OrderData[]> => {
       ];
     }
     
+    console.log(`Fetching orders for user ID: ${userId}`);
+    
     // Use a timeout to prevent hanging on Firebase queries
     const ordersPromise = Promise.race([
       // Query orders collection for all orders with matching userId
       getDocs(query(
         collection(db, "orders"),
-        where("userId", "==", userId),
-        orderBy("timestamp", "desc") // Add ordering by timestamp
+        where("userId", "==", userId)
       )),
       new Promise(resolve => {
         setTimeout(() => {
@@ -358,17 +459,48 @@ export const getUserOrders = async (userId: string): Promise<OrderData[]> => {
     }
     
     // Convert snapshot to array of OrderData
-    const orders = ordersSnapshot.docs.map((doc: any) => ({
-      id: doc.id,
-      ...doc.data()
-    })) as OrderData[];
+    const orders = ordersSnapshot.docs.map((doc: any) => {
+      const data = doc.data();
+      
+      // Normalize timestamp to ensure consistent handling
+      let timestamp = data.timestamp;
+      if (!timestamp) {
+        timestamp = new Date();
+      } else if (typeof timestamp === 'object' && !timestamp.toDate && !(timestamp instanceof Date)) {
+        // This is likely a server timestamp that hasn't been resolved yet
+        timestamp = new Date();
+      }
+      
+      return {
+        id: doc.id,
+        ...data,
+        // Ensure we have a valid timestamp object
+        timestamp: timestamp
+      };
+    }) as OrderData[];
     
     console.log(`Found ${orders.length} orders for user:`, userId);
     
     return orders;
   } catch (error) {
     console.error("Error fetching user orders:", error);
-    return [];
+    // Return some fallback data if there was an error
+    const trackingId = `TRK-${userId.substring(0, 6)}-${generateId(8).toUpperCase()}`;
+    return [{
+      id: `fallback_${generateId(10)}`,
+      userId,
+      trackingId,
+      productType: "emergency fallback",
+      quantity: 1,
+      deliveryAddress: "Error recovery address",
+      totalAmount: 0,
+      customerName: "Error Recovery",
+      customerEmail: "error@example.com",
+      status: "error",
+      paymentStatus: "unknown",
+      timestamp: new Date(),
+      lastUpdated: new Date(),
+    }];
   }
 };
 

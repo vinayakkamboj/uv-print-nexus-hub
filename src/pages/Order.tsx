@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -367,7 +366,12 @@ export default function Order() {
       
       // Start payment process with a small delay to allow UI to update
       setTimeout(() => {
-        handlePaymentProcess(orderResult.orderId, orderData);
+        // Pass the full orderData to the payment process
+        const completeOrderData = {
+          ...orderData,
+          id: orderResult.orderId,
+        };
+        handlePaymentProcess(orderResult.orderId, completeOrderData);
       }, 500);
       
     } catch (error) {
@@ -432,7 +436,7 @@ export default function Order() {
       
       setProcessingStep("Processing payment...");
       
-      // Process the payment
+      // Process the payment with full order data
       let paymentResult;
       try {
         paymentResult = await processPayment({
@@ -443,6 +447,11 @@ export default function Order() {
           customerName: orderData.customerName,
           customerEmail: orderData.customerEmail,
           description: `Order for ${orderData.productType} Printing - Qty: ${orderData.quantity}`,
+          userId: orderData.userId,
+          productType: orderData.productType,
+          quantity: orderData.quantity,
+          deliveryAddress: orderData.deliveryAddress,
+          orderData: orderData // Pass the full order data
         });
       } catch (paymentError) {
         console.error("Payment processing error:", paymentError);
@@ -505,7 +514,9 @@ export default function Order() {
       // Payment successful
       setProcessingStep("Updating order status...");
       
-      // Update order with payment details
+      // Update order with payment details - now including the orderData
+      paymentResult.orderData = orderData; // Add orderData to payment details
+      
       try {
         await updateOrderAfterPayment(createdOrderId, paymentResult);
       } catch (updateError) {
