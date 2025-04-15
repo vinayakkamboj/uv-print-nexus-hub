@@ -28,6 +28,9 @@ interface Order {
     status: string;
     timestamp: any;
   };
+  // Add the missing properties
+  paymentStatus?: string;
+  trackingId?: string;
 }
 
 interface Invoice {
