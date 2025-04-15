@@ -1,3 +1,4 @@
+
 interface RazorpayResponse {
   razorpay_payment_id: string;
   razorpay_order_id: string;
@@ -28,7 +29,8 @@ const RAZORPAY_KEY_ID = import.meta.env.VITE_RAZORPAY_KEY_ID || "rzp_test_1DP5mm
 
 // Reduced timeouts to prevent UI hanging but give enough time to load
 const SCRIPT_LOAD_TIMEOUT = 5000; // 5 seconds
-const PAYMENT_PROCESS_TIMEOUT = 10000; // 10 seconds
+// Extending the payment process timeout to reduce the frequency of timeouts
+const PAYMENT_PROCESS_TIMEOUT = 20000; // 20 seconds (increased from 10s)
 const ORDER_CREATION_TIMEOUT = 5000; // 5 seconds
 
 // Flag to track if we're in fallback mode
@@ -297,7 +299,7 @@ export const processPayment = (
             resolve(paymentDetails);
           });
           
-          // Force quick resolution in case user doesn't interact
+          // Force quick resolution in case user doesn't interact - reduced auto-completion to avoid timeout message
           setTimeout(() => {
             const mockPaymentId = `pay_auto_${orderDetails.orderId.substring(0, 8)}_${Math.random().toString(36).substring(2, 6)}`;
             const paymentDetails: PaymentDetails = {
@@ -318,7 +320,7 @@ export const processPayment = (
             };
             // This may or may not resolve depending on if the payment was already handled
             resolve(paymentDetails);
-          }, 5000); // Auto-complete after 5 seconds
+          }, 15000); // Auto-complete after 15 seconds - increased from 5s to reduce timeout messages
           
           razorpay.open();
           console.log("Razorpay payment window opened");
