@@ -5,11 +5,11 @@ interface RazorpayResponse {
 }
 
 export interface PaymentDetails {
-  id: string;
-  amount: number;
-  currency: string;
+  id?: string;
+  amount?: number;
+  currency?: string;
   status: 'pending' | 'completed' | 'failed' | 'received';
-  timestamp: Date;
+  timestamp?: Date;
   paymentId?: string;
   method?: string;
   userId?: string;

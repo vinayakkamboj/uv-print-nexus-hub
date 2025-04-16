@@ -515,8 +515,12 @@ export default function Order() {
       
       try {
         await updateOrderAfterPayment(orderResult.orderId, {
+          id: orderResult.orderId,
           status: "completed",
-          paymentStatus: "paid"
+          paymentStatus: "paid",
+          timestamp: new Date(),
+          amount: orderData.totalAmount,
+          currency: "INR"
         });
         console.log("Order status updated after payment");
       } catch (updateError) {
