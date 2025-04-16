@@ -328,6 +328,8 @@ export default function Order() {
         customerEmail: userData?.email || user?.email || "customer@example.com",
         hsnCode,
         trackingId: customerTrackingId, // Add tracking ID to the order
+        status: "pending_payment", // Ensure initial status is pending_payment
+        paymentStatus: "pending"   // Set initial payment status
       };
       
       simulateProgress(75, 90, 500); // Continue progress
@@ -410,6 +412,11 @@ export default function Order() {
           timestamp: new Date(),
           paymentId: `emergency_pay_${Math.random().toString(36).substring(2, 6)}`,
           method: 'Emergency Fallback',
+          orderData: {
+            ...orderData,
+            status: "received",
+            paymentStatus: "paid"
+          }
         });
       }, PAYMENT_TIMEOUT);
       
@@ -451,7 +458,11 @@ export default function Order() {
           productType: orderData.productType,
           quantity: orderData.quantity,
           deliveryAddress: orderData.deliveryAddress,
-          orderData: orderData // Pass the full order data
+          orderData: {
+            ...orderData,
+            status: "received",
+            paymentStatus: "paid"
+          }
         });
       } catch (paymentError) {
         console.error("Payment processing error:", paymentError);
@@ -464,6 +475,11 @@ export default function Order() {
           timestamp: new Date(),
           paymentId: `emergency_pay_${createdOrderId.substring(0, 6)}_${Math.random().toString(36).substring(2, 6)}`,
           method: 'Emergency Fallback',
+          orderData: {
+            ...orderData,
+            status: "received",
+            paymentStatus: "paid"
+          }
         };
       }
       
@@ -487,6 +503,11 @@ export default function Order() {
           timestamp: new Date(),
           paymentId: `final_fallback_${Math.random().toString(36).substring(2, 8)}`,
           method: 'Final Emergency Fallback',
+          orderData: {
+            ...orderData,
+            status: "received",
+            paymentStatus: "paid"
+          }
         };
         await completeOrderAfterPayment(createdOrderId, orderData, emergencyPayment);
         return;
@@ -514,10 +535,14 @@ export default function Order() {
       // Payment successful
       setProcessingStep("Updating order status...");
       
-      // Update order with payment details - now including the orderData
-      paymentResult.orderData = orderData; // Add orderData to payment details
+      // Make sure order status is correctly set in payment result
+      if (paymentResult.status === 'completed' && paymentResult.orderData) {
+        paymentResult.orderData.status = "received";
+        paymentResult.orderData.paymentStatus = "paid";
+      }
       
       try {
+        // Update order with payment details
         await updateOrderAfterPayment(createdOrderId, paymentResult);
       } catch (updateError) {
         console.error("Error updating order after payment:", updateError);
@@ -530,7 +555,12 @@ export default function Order() {
       let invoiceResult;
       try {
         invoiceResult = await createAndSendInvoice(
-          { ...orderData, id: createdOrderId },
+          { 
+            ...orderData, 
+            id: createdOrderId,
+            status: "received",  // Ensure status is correct
+            paymentStatus: "paid" // Ensure payment status is correct
+          },
           paymentResult
         );
         

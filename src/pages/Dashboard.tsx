@@ -105,7 +105,8 @@ export default function Dashboard() {
       const typedOrders = ordersData.map(order => ({
         ...order,
         status: (order.status || "pending_payment") as "pending_payment" | "received" | "processing" | "printed" | "shipped",
-        timestamp: order.timestamp || new Date()
+        timestamp: order.timestamp || new Date(),
+        paymentStatus: order.paymentStatus || (order.status === "pending_payment" ? "pending" : "paid")
       }));
       
       setOrders(typedOrders);
@@ -144,9 +145,8 @@ export default function Dashboard() {
 
   const isPendingOrder = useCallback((order: Order) => {
     return (
-      order.status === "pending_payment" || 
-      order.paymentStatus === "failed" || 
-      order.paymentStatus === "pending"
+      (order.status === "pending_payment" || order.paymentStatus === "pending" || order.paymentStatus === "failed") &&
+      !["received", "processing", "printed", "shipped"].includes(order.status)
     );
   }, []);
 
@@ -169,7 +169,7 @@ export default function Dashboard() {
       case "pending_payment":
         return "bg-orange-100 text-orange-700";
       case "received":
-        return "bg-blue-100 text-blue-700";
+        return "bg-green-100 text-green-700";
       case "processing":
         return "bg-yellow-100 text-yellow-700";
       case "printed":
@@ -186,7 +186,7 @@ export default function Dashboard() {
       case "pending_payment":
         return <CreditCard className="h-4 w-4" />;
       case "received":
-        return <Clock className="h-4 w-4" />;
+        return <CheckCircle className="h-4 w-4" />;
       case "processing":
         return <Package className="h-4 w-4" />;
       case "printed":
@@ -246,11 +246,6 @@ export default function Dashboard() {
       console.log("Payment result received:", paymentResult);
       
       if (paymentResult.status === 'completed') {
-        toast({
-          title: "Payment Successful",
-          description: "Your payment has been successfully processed.",
-        });
-        
         updateOrderAfterPayment(order.id, true);
         setLastPaymentTime(Date.now());
         setActiveTab("orders");
