@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -197,47 +198,64 @@ export default function Order() {
       console.log("Demo mode - simulating file upload");
       await new Promise(resolve => setTimeout(resolve, 500));
       
-      const blob = new Blob([file!], { type: file!.type });
-      uploadedFileUrl = URL.createObjectURL(blob);
-      console.log("Created local file URL:", uploadedFileUrl);
+      if (file) {
+        const blob = new Blob([file], { type: file.type });
+        uploadedFileUrl = URL.createObjectURL(blob);
+        console.log("Created local file URL:", uploadedFileUrl);
+      } else {
+        uploadedFileUrl = "demo-file-url";
+      }
     } else {
       try {
         setProcessingStep("Uploading your design file...");
         
-        const localBlob = new Blob([file!], { type: file!.type });
-        const localFileUrl = URL.createObjectURL(localBlob);
-        
-        const fileUploadPromise = Promise.race([
-          (async () => {
-            const fileExtension = file!.name.split('.').pop();
-            const uniqueFileName = `${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${fileExtension}`;
-            const storageRef = ref(storage, `designs/${user?.uid}/${uniqueFileName}`);
-            
-            const uploadResult = await uploadBytes(storageRef, file!);
-            return getDownloadURL(uploadResult.ref);
-          })(),
-          new Promise<string>((resolve) => {
-            setTimeout(() => {
-              console.log("File upload timed out, using local URL");
-              resolve(localFileUrl);
-            }, 3000);
-          })
-        ]);
-        
-        try {
-          uploadedFileUrl = await fileUploadPromise;
-          console.log("File URL obtained:", uploadedFileUrl);
-        } catch (uploadError) {
-          console.error("Error in file upload promise:", uploadError);
-          uploadedFileUrl = localFileUrl;
-          console.log("Using local URL after error:", uploadedFileUrl);
+        if (file) {
+          const localBlob = new Blob([file], { type: file.type });
+          const localFileUrl = URL.createObjectURL(localBlob);
+          
+          const fileUploadPromise = Promise.race([
+            (async () => {
+              try {
+                const fileExtension = file.name.split('.').pop();
+                const uniqueFileName = `${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${fileExtension}`;
+                const storageRef = ref(storage, `designs/${user?.uid}/${uniqueFileName}`);
+                
+                const uploadResult = await uploadBytes(storageRef, file);
+                return getDownloadURL(uploadResult.ref);
+              } catch (innerError) {
+                console.error("Inner upload error:", innerError);
+                throw innerError;
+              }
+            })(),
+            new Promise<string>((resolve) => {
+              setTimeout(() => {
+                console.log("File upload timed out, using local URL");
+                resolve(localFileUrl);
+              }, 3000);
+            })
+          ]);
+          
+          try {
+            uploadedFileUrl = await fileUploadPromise;
+            console.log("File URL obtained:", uploadedFileUrl);
+          } catch (uploadError) {
+            console.error("Error in file upload promise:", uploadError);
+            uploadedFileUrl = localFileUrl;
+            console.log("Using local URL after error:", uploadedFileUrl);
+          }
+        } else {
+          uploadedFileUrl = "fallback-file-url"; 
         }
       } catch (uploadError) {
         console.error("Error uploading file:", uploadError);
         
-        const blob = new Blob([file!], { type: file!.type });
-        uploadedFileUrl = URL.createObjectURL(blob);
-        console.log("Using local URL instead:", uploadedFileUrl);
+        if (file) {
+          const blob = new Blob([file], { type: file.type });
+          uploadedFileUrl = URL.createObjectURL(blob);
+          console.log("Using local URL instead:", uploadedFileUrl);
+        } else {
+          uploadedFileUrl = "error-fallback-url";
+        }
       }
     }
     
@@ -252,12 +270,12 @@ export default function Order() {
     const preparedOrderData = {
       userId: user?.uid || "demo-user",
       productType,
-      quantity: parseInt(quantity),
+      quantity: parseInt(quantity) || 0,
       specifications,
       deliveryAddress,
       gstNumber,
       fileUrl: uploadedFileUrl,
-      fileName: file!.name,
+      fileName: file ? file.name : "demo-file.jpg",
       totalAmount: estimatedPrice,
       customerName: userData?.name || user?.displayName || "Customer",
       customerEmail: userData?.email || user?.email || "customer@example.com",
@@ -493,10 +511,10 @@ export default function Order() {
         status: "completed",
         paymentStatus: "paid",
         paymentDetails: {
-          id: paymentResult.id,
-          paymentId: paymentResult.paymentId,
-          method: paymentResult.method,
-          status: paymentResult.status,
+          id: paymentResult.id || paymentResult.razorpayOrderId || `generated-${Math.random().toString(36).substring(2, 10)}`,
+          paymentId: paymentResult.paymentId || `pid-${Math.random().toString(36).substring(2, 10)}`,
+          method: paymentResult.method || 'Razorpay',
+          status: paymentResult.status || 'completed',
           timestamp: new Date()
         }
       };

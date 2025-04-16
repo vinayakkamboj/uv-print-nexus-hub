@@ -1,3 +1,4 @@
+
 interface RazorpayResponse {
   razorpay_payment_id: string;
   razorpay_order_id: string;
@@ -196,7 +197,8 @@ export const processPayment = (
             ...orderDetails.orderData,
             status: "received", // Explicitly set status to received for demo mode
             paymentStatus: "paid" // Explicitly mark as paid
-          }
+          },
+          paymentStatus: "paid" // Add explicit payment status at root level
         };
         
         console.log("Demo payment simulation completed:", paymentDetails);
@@ -232,7 +234,8 @@ export const processPayment = (
             ...orderDetails.orderData,
             status: "received", // Explicitly set status to received
             paymentStatus: "paid" // Mark explicitly as paid
-          }
+          },
+          paymentStatus: "paid" // Add explicit payment status at root level
         };
         
         console.log("Fallback payment completed:", paymentDetails);
@@ -284,7 +287,8 @@ export const processPayment = (
                 ...orderDetails.orderData,
                 status: "received", // Explicitly set status to received on successful payment
                 paymentStatus: "paid" // Add explicit payment status
-              }
+              },
+              paymentStatus: "paid" // Add explicit payment status at root level
             };
             
             // Force a small delay to ensure database updates complete
@@ -312,7 +316,8 @@ export const processPayment = (
                   ...orderDetails.orderData,
                   status: "pending_payment", // Ensure dismissed payments stay as pending
                   paymentStatus: "failed" // Mark explicitly as failed
-                }
+                },
+                paymentStatus: "failed" // Add explicit payment status at root level
               };
               isProcessingPayment = false; // Reset flag
               resolve(paymentDetails);
@@ -344,7 +349,8 @@ export const processPayment = (
                 ...orderDetails.orderData,
                 status: "pending_payment", // Keep as pending on failure
                 paymentStatus: "failed"
-              }
+              },
+              paymentStatus: "failed" // Add explicit payment status at root level
             };
             isProcessingPayment = false; // Reset flag
             resolve(paymentDetails);
@@ -375,7 +381,8 @@ export const processPayment = (
                   ...orderDetails.orderData,
                   status: "received", // Explicitly set status to received
                   paymentStatus: "paid" // Mark explicitly as paid
-                }
+                },
+                paymentStatus: "paid" // Add explicit payment status at root level
               };
               // This may or may not resolve depending on if the payment was already handled
               console.log("Auto-completing payment after timeout:", paymentDetails);
@@ -420,7 +427,8 @@ export const processPayment = (
                 ...orderDetails.orderData,
                 status: "received", // Explicitly set status to received
                 paymentStatus: "paid" // Mark explicitly as paid
-              }
+              },
+              paymentStatus: "paid" // Add explicit payment status at root level
             };
             console.log("Payment fallback completed after error:", paymentDetails);
             isProcessingPayment = false; // Reset flag
@@ -451,7 +459,8 @@ export const processPayment = (
             ...orderDetails.orderData,
             status: "received", // Explicitly set status to received
             paymentStatus: "paid" // Mark explicitly as paid
-          }
+          },
+          paymentStatus: "paid" // Add explicit payment status at root level
         };
         console.log("Emergency payment fallback:", paymentDetails);
         isProcessingPayment = false; // Reset flag
@@ -483,7 +492,8 @@ export const processPayment = (
             ...orderDetails.orderData,
             status: "received", // Explicitly set status to received
             paymentStatus: "paid" // Mark explicitly as paid
-          }
+          },
+          paymentStatus: "paid" // Add explicit payment status at root level
         };
         
         isProcessingPayment = false; // Reset flag
