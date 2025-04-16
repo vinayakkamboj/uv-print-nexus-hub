@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useCallback } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -162,6 +163,11 @@ export default function Dashboard() {
           : order
       )
     );
+    
+    // Force switching to the appropriate tab after payment
+    if (paymentSuccess) {
+      setActiveTab("orders");
+    }
   }, []);
 
   const getStatusColor = (status: string) => {
@@ -248,7 +254,7 @@ export default function Dashboard() {
       if (paymentResult.status === 'completed') {
         updateOrderAfterPayment(order.id, true);
         setLastPaymentTime(Date.now());
-        setActiveTab("orders");
+        setActiveTab("orders"); // Switch to orders tab after successful payment
         await fetchUserOrders();
       } else {
         toast({
@@ -450,18 +456,23 @@ export default function Dashboard() {
       </div>
 
       <Tabs defaultValue="orders" value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="mb-6">
-          <TabsTrigger value="orders" className="text-base">
-            <ShoppingBag className="h-4 w-4 mr-2" /> Orders
+        {/* Responsive tabs for mobile */}
+        <TabsList className="mb-6 flex w-full overflow-x-auto no-scrollbar max-w-full">
+          <TabsTrigger value="orders" className="text-sm sm:text-base whitespace-nowrap flex-shrink-0">
+            <ShoppingBag className="h-4 w-4 mr-1 sm:mr-2" /> 
+            <span className="sm:inline">Orders</span>
           </TabsTrigger>
-          <TabsTrigger value="pending" className="text-base">
-            <CreditCard className="h-4 w-4 mr-2" /> Pending Payments
+          <TabsTrigger value="pending" className="text-sm sm:text-base whitespace-nowrap flex-shrink-0">
+            <CreditCard className="h-4 w-4 mr-1 sm:mr-2" /> 
+            <span className="sm:inline">Pending Payments</span>
           </TabsTrigger>
-          <TabsTrigger value="invoices" className="text-base">
-            <FileText className="h-4 w-4 mr-2" /> Invoices
+          <TabsTrigger value="invoices" className="text-sm sm:text-base whitespace-nowrap flex-shrink-0">
+            <FileText className="h-4 w-4 mr-1 sm:mr-2" /> 
+            <span className="sm:inline">Invoices</span>
           </TabsTrigger>
-          <TabsTrigger value="profile" className="text-base">
-            <Settings className="h-4 w-4 mr-2" /> Profile
+          <TabsTrigger value="profile" className="text-sm sm:text-base whitespace-nowrap flex-shrink-0">
+            <Settings className="h-4 w-4 mr-1 sm:mr-2" /> 
+            <span className="sm:inline">Profile</span>
           </TabsTrigger>
         </TabsList>
 
@@ -475,14 +486,14 @@ export default function Dashboard() {
                 </Link>
               </div>
             </CardHeader>
-            <CardContent>
+            <CardContent className="overflow-x-auto">
               {loading ? (
                 <div className="flex justify-center p-6">
                   <div className="animate-spin rounded-full h-12 w-12 border-t-4 border-primary border-solid"></div>
                 </div>
               ) : getCompletedOrders().length > 0 ? (
-                <div className="overflow-x-auto">
-                  <table className="w-full">
+                <div className="overflow-x-auto -mx-6 px-6">
+                  <table className="w-full min-w-[640px]">
                     <thead>
                       <tr className="border-b">
                         <th className="text-left py-3 px-4 font-medium">Order ID</th>
@@ -579,14 +590,14 @@ export default function Dashboard() {
                 </Link>
               </div>
             </CardHeader>
-            <CardContent>
+            <CardContent className="overflow-x-auto">
               {loading ? (
                 <div className="flex justify-center p-6">
                   <div className="animate-spin rounded-full h-12 w-12 border-t-4 border-primary border-solid"></div>
                 </div>
               ) : getPendingOrders().length > 0 ? (
-                <div className="overflow-x-auto">
-                  <table className="w-full">
+                <div className="overflow-x-auto -mx-6 px-6">
+                  <table className="w-full min-w-[640px]">
                     <thead>
                       <tr className="border-b">
                         <th className="text-left py-3 px-4 font-medium">Order ID</th>
@@ -675,14 +686,14 @@ export default function Dashboard() {
             <CardHeader>
               <CardTitle>Invoice History</CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="overflow-x-auto">
               {loading ? (
                 <div className="flex justify-center p-6">
                   <div className="animate-spin rounded-full h-12 w-12 border-t-4 border-primary border-solid"></div>
                 </div>
               ) : invoices.length > 0 ? (
-                <div className="overflow-x-auto">
-                  <table className="w-full">
+                <div className="overflow-x-auto -mx-6 px-6">
+                  <table className="w-full min-w-[640px]">
                     <thead>
                       <tr className="border-b">
                         <th className="text-left py-3 px-4 font-medium">Invoice ID</th>

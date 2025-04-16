@@ -27,13 +27,15 @@ const DEMO_MODE = import.meta.env.VITE_RAZORPAY_DEMO_MODE === 'true';
 // Default to test key if not provided
 const RAZORPAY_KEY_ID = import.meta.env.VITE_RAZORPAY_KEY_ID || "rzp_test_1DP5mmOlF5G5ag";
 
-// Increased timeouts to allow for processing time but avoid UI hanging
-const SCRIPT_LOAD_TIMEOUT = 8000; // 8 seconds
-const PAYMENT_PROCESS_TIMEOUT = 60000; // 60 seconds (increased to reduce timeouts)
-const ORDER_CREATION_TIMEOUT = 10000; // 10 seconds
+// Reduced timeouts to prevent duplicate orders but still avoid UI hanging
+const SCRIPT_LOAD_TIMEOUT = 6000; // 6 seconds
+const PAYMENT_PROCESS_TIMEOUT = 30000; // 30 seconds (reduced to prevent duplicate orders)
+const ORDER_CREATION_TIMEOUT = 8000; // 8 seconds
 
 // Flag to track if we're in fallback mode
 let isInFallbackMode = false;
+// Flag to prevent duplicate order processing
+let isProcessingPayment = false;
 
 export const initializeRazorpay = (): Promise<boolean> => {
   return new Promise((resolve) => {
@@ -148,6 +150,26 @@ export const processPayment = (
 ): Promise<PaymentDetails> => {
   console.log("Processing payment with Razorpay...");
   
+  // Prevent duplicate processing
+  if (isProcessingPayment) {
+    console.log("Already processing a payment, preventing duplicate");
+    return Promise.resolve({
+      id: orderDetails.razorpayOrderId,
+      amount: orderDetails.amount,
+      currency: orderDetails.currency,
+      status: 'failed',
+      timestamp: new Date(),
+      method: 'Duplicate Prevented',
+      orderData: {
+        status: "pending_payment",
+        paymentStatus: "failed"
+      }
+    });
+  }
+  
+  // Set flag to prevent duplicates
+  isProcessingPayment = true;
+  
   // Immediately use demo mode if we're in fallback mode or demo mode is enabled
   if (isInFallbackMode || DEMO_MODE) {
     console.log("Using simulated payment process (DEMO/FALLBACK MODE)");
@@ -178,6 +200,7 @@ export const processPayment = (
         };
         
         console.log("Demo payment simulation completed:", paymentDetails);
+        isProcessingPayment = false; // Reset flag
         resolve(paymentDetails);
       }, 1000); // Short delay for demo mode
     });
@@ -213,13 +236,14 @@ export const processPayment = (
         };
         
         console.log("Fallback payment completed:", paymentDetails);
+        isProcessingPayment = false; // Reset flag
         resolve(paymentDetails);
       }, 1000);
     });
   }
   
   // Use a master timeout to ensure we never get stuck
-  return Promise.race([
+  const paymentPromise = Promise.race([
     new Promise<PaymentDetails>((resolve) => {
       try {
         console.log("Opening Razorpay payment window...");
@@ -261,6 +285,7 @@ export const processPayment = (
               }
             };
             console.log("Resolving payment details after successful payment:", paymentDetails);
+            isProcessingPayment = false; // Reset flag
             resolve(paymentDetails);
           },
           modal: {
@@ -283,6 +308,7 @@ export const processPayment = (
                   paymentStatus: "failed" // Mark explicitly as failed
                 }
               };
+              isProcessingPayment = false; // Reset flag
               resolve(paymentDetails);
             },
           },
@@ -314,12 +340,13 @@ export const processPayment = (
                 paymentStatus: "failed"
               }
             };
+            isProcessingPayment = false; // Reset flag
             resolve(paymentDetails);
           });
           
           // Auto-complete only as a last resort
           setTimeout(() => {
-            // Check if payment is still open after 50 seconds
+            // Check if payment is still open after 25 seconds
             // Only auto-complete if modal is still showing
             if (document.querySelector(".razorpay-container")) {
               const mockPaymentId = `pay_auto_${orderDetails.orderId.substring(0, 8)}_${Math.random().toString(36).substring(2, 6)}`;
@@ -345,9 +372,10 @@ export const processPayment = (
               };
               // This may or may not resolve depending on if the payment was already handled
               console.log("Auto-completing payment after timeout:", paymentDetails);
+              isProcessingPayment = false; // Reset flag
               resolve(paymentDetails);
             }
-          }, 50000); // Auto-complete after 50 seconds only if modal is still showing
+          }, 25000); // Auto-complete after 25 seconds only if modal is still showing
           
           razorpay.open();
           console.log("Razorpay payment window opened");
@@ -379,6 +407,7 @@ export const processPayment = (
               }
             };
             console.log("Payment fallback completed after error:", paymentDetails);
+            isProcessingPayment = false; // Reset flag
             resolve(paymentDetails);
           }, 1000);
         }
@@ -409,6 +438,7 @@ export const processPayment = (
           }
         };
         console.log("Emergency payment fallback:", paymentDetails);
+        isProcessingPayment = false; // Reset flag
         resolve(paymentDetails);
       }
     }),
@@ -440,10 +470,16 @@ export const processPayment = (
           }
         };
         
+        isProcessingPayment = false; // Reset flag
         resolve(paymentDetails);
       }, PAYMENT_PROCESS_TIMEOUT);
     })
   ]);
+  
+  return paymentPromise.finally(() => {
+    // Ensure the flag is reset even if there's an error
+    isProcessingPayment = false;
+  });
 };
 
 // Add this TypeScript declaration to recognize the Razorpay global
