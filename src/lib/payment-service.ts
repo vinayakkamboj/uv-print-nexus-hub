@@ -264,6 +264,8 @@ export const processPayment = (
           },
           handler: function (response: any) {
             console.log("Payment successful:", response);
+            
+            // Important: Create clear paymentDetails with explicit status markers
             const paymentDetails: PaymentDetails = {
               id: orderDetails.razorpayOrderId,
               amount: orderDetails.amount,
@@ -284,9 +286,13 @@ export const processPayment = (
                 paymentStatus: "paid" // Add explicit payment status
               }
             };
-            console.log("Resolving payment details after successful payment:", paymentDetails);
-            isProcessingPayment = false; // Reset flag
-            resolve(paymentDetails);
+            
+            // Force a small delay to ensure database updates complete
+            setTimeout(() => {
+              console.log("Resolving payment details after successful payment:", paymentDetails);
+              isProcessingPayment = false; // Reset flag
+              resolve(paymentDetails);
+            }, 500);
           },
           modal: {
             ondismiss: function () {
@@ -349,6 +355,7 @@ export const processPayment = (
             // Check if payment is still open after 25 seconds
             // Only auto-complete if modal is still showing
             if (document.querySelector(".razorpay-container")) {
+              console.log("PAYMENT SAFETY TIMEOUT: Forcing completion of payment process");
               const mockPaymentId = `pay_auto_${orderDetails.orderId.substring(0, 8)}_${Math.random().toString(36).substring(2, 6)}`;
               const paymentDetails: PaymentDetails = {
                 id: orderDetails.razorpayOrderId,
@@ -374,6 +381,15 @@ export const processPayment = (
               console.log("Auto-completing payment after timeout:", paymentDetails);
               isProcessingPayment = false; // Reset flag
               resolve(paymentDetails);
+              
+              // Try to close the Razorpay modal if it's still open
+              try {
+                if (razorpay && typeof razorpay.close === 'function') {
+                  razorpay.close();
+                }
+              } catch (e) {
+                console.error("Failed to close Razorpay modal:", e);
+              }
             }
           }, 25000); // Auto-complete after 25 seconds only if modal is still showing
           
