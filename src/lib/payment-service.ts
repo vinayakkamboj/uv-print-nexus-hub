@@ -19,6 +19,7 @@ export interface PaymentDetails {
   quantity?: number;
   deliveryAddress?: string;
   orderData?: any;
+  paymentStatus?: 'pending' | 'paid' | 'failed';
 }
 
 // Use import.meta.env instead of process.env for Vite apps

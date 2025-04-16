@@ -38,15 +38,15 @@ const productTypes = [
 ];
 
 const hsnCodes = {
-  sticker: "4821",     // Printed labels
-  tag: "4821",         // Printed tags
-  box: "4819",         // Cartons, boxes
-  medicine_box: "4819", // Pharmaceutical packaging
-  custom: "4911",      // Other printed matter
+  sticker: "4821",
+  tag: "4821",
+  box: "4819",
+  medicine_box: "4819",
+  custom: "4911",
 };
 
-const SAFETY_TIMEOUT = 20000; // 20 seconds
-const PAYMENT_TIMEOUT = 15000; // 15 seconds
+const SAFETY_TIMEOUT = 20000;
+const PAYMENT_TIMEOUT = 15000;
 
 export default function Order() {
   const { user, userData } = useAuth();
