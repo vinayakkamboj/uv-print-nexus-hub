@@ -37,7 +37,6 @@ const productTypes = [
   { value: "custom", label: "Custom Packaging" },
 ];
 
-// HSN codes for printing products
 const hsnCodes = {
   sticker: "4821",     // Printed labels
   tag: "4821",         // Printed tags
@@ -46,7 +45,6 @@ const hsnCodes = {
   custom: "4911",      // Other printed matter
 };
 
-// Increased timeouts to prevent UI hanging
 const SAFETY_TIMEOUT = 20000; // 20 seconds
 const PAYMENT_TIMEOUT = 15000; // 15 seconds
 
@@ -86,7 +84,6 @@ export default function Order() {
   }, [userData]);
 
   useEffect(() => {
-    // Initialize Razorpay when the component mounts
     initializeRazorpay()
       .then((success) => {
         if (!success) {
@@ -97,7 +94,6 @@ export default function Order() {
         console.error("Error initializing Razorpay:", error);
       });
       
-    // Cleanup safety timer on unmount
     return () => {
       if (safetyTimer) {
         clearTimeout(safetyTimer);
@@ -108,13 +104,11 @@ export default function Order() {
   const setAndWatchLoadingState = (isLoading: boolean) => {
     setLoading(isLoading);
     
-    // Clear any existing safety timer
     if (safetyTimer) {
       clearTimeout(safetyTimer);
       setSafetyTimer(null);
     }
     
-    // Set a new safety timer if we're going into loading state
     if (isLoading) {
       const timer = setTimeout(() => {
         console.log("SAFETY TIMEOUT: Resetting loading state after timeout");
@@ -140,7 +134,6 @@ export default function Order() {
       const selectedFile = e.target.files[0];
       setFile(selectedFile);
       
-      // Create a preview URL for the file if it's an image
       if (selectedFile.type.startsWith('image/')) {
         const reader = new FileReader();
         reader.onload = (event) => {
@@ -148,7 +141,6 @@ export default function Order() {
         };
         reader.readAsDataURL(selectedFile);
       } else {
-        // For non-image files, just show the file name
         setFilePreview(null);
       }
     }
@@ -188,49 +180,39 @@ export default function Order() {
   }, []);
 
   const uploadFileAndPrepareOrder = async () => {
-    // Set loading state with safety timeout
     setAndWatchLoadingState(true);
     setProcessingStep("Processing your order...");
     setUploadProgress(5);
     
-    // Create customer tracking ID first
     const customerTrackingId = `TRK-${user?.uid.substring(0, 6)}-${generateId(8).toUpperCase()}`;
     setTrackingId(customerTrackingId);
     
-    // Prepare for file upload (actual or simulated)
     let uploadedFileUrl = "";
     
-    // Start progress simulation for better UX
     simulateProgress(5, 40, 1000);
 
-    // Check if we're in demo mode
     const demoMode = import.meta.env.VITE_RAZORPAY_DEMO_MODE === 'true';
     
     if (demoMode) {
       console.log("Demo mode - simulating file upload");
-      await new Promise(resolve => setTimeout(resolve, 500)); // Shorter delay
+      await new Promise(resolve => setTimeout(resolve, 500));
       
-      // Create a blob URL as a placeholder
       const blob = new Blob([file!], { type: file!.type });
       uploadedFileUrl = URL.createObjectURL(blob);
       console.log("Created local file URL:", uploadedFileUrl);
     } else {
-      // Attempt to upload file to Firebase Storage with timeout
       try {
         setProcessingStep("Uploading your design file...");
         
-        // Create a local blob URL as a backup immediately
         const localBlob = new Blob([file!], { type: file!.type });
         const localFileUrl = URL.createObjectURL(localBlob);
         
-        // Try the actual upload with timeout
         const fileUploadPromise = Promise.race([
           (async () => {
             const fileExtension = file!.name.split('.').pop();
             const uniqueFileName = `${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${fileExtension}`;
             const storageRef = ref(storage, `designs/${user?.uid}/${uniqueFileName}`);
             
-            // Upload the file
             const uploadResult = await uploadBytes(storageRef, file!);
             return getDownloadURL(uploadResult.ref);
           })(),
@@ -253,7 +235,6 @@ export default function Order() {
       } catch (uploadError) {
         console.error("Error uploading file:", uploadError);
         
-        // Fallback to local URL
         const blob = new Blob([file!], { type: file!.type });
         uploadedFileUrl = URL.createObjectURL(blob);
         console.log("Using local URL instead:", uploadedFileUrl);
@@ -261,11 +242,10 @@ export default function Order() {
     }
     
     setFileUrl(uploadedFileUrl);
-    simulateProgress(40, 75, 500); // Continue progress
+    simulateProgress(40, 75, 500);
     
     const estimatedPrice = calculateEstimatedPrice();
     
-    // Get HSN code based on product type
     const hsnCode = hsnCodes[productType as keyof typeof hsnCodes] || "4911";
 
     setProcessingStep("Preparing your order...");
@@ -282,16 +262,15 @@ export default function Order() {
       customerName: userData?.name || user?.displayName || "Customer",
       customerEmail: userData?.email || user?.email || "customer@example.com",
       hsnCode,
-      trackingId: customerTrackingId, // Add tracking ID to the order
-      status: "pending_payment", // Ensure initial status is pending_payment
-      paymentStatus: "pending"   // Set initial payment status
+      trackingId: customerTrackingId,
+      status: "pending_payment",
+      paymentStatus: "pending"
     };
     
     setOrderData(preparedOrderData);
-    simulateProgress(75, 100, 500); // Continue progress
+    simulateProgress(75, 100, 500);
     setProcessingStep("Order prepared. Ready for payment.");
     
-    // Reset loading state before payment process
     setAndWatchLoadingState(false);
     
     return preparedOrderData;
@@ -300,7 +279,6 @@ export default function Order() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Reset any previous errors and states
     setOrderError(null);
     if (safetyTimer) {
       clearTimeout(safetyTimer);
@@ -334,7 +312,6 @@ export default function Order() {
       return;
     }
 
-    // Validate user is logged in
     if (!user) {
       toast({
         title: "Authentication Error",
@@ -346,16 +323,13 @@ export default function Order() {
     }
 
     try {
-      // Upload file and prepare order data
       const preparedOrderData = await uploadFileAndPrepareOrder();
       
-      // Now proceed to payment
       toast({
         title: "Order Prepared",
         description: "Your order details are ready. Proceeding to payment.",
       });
       
-      // Start payment process with a small delay to allow UI to update
       setTimeout(() => {
         handlePaymentProcess(preparedOrderData);
       }, 500);
@@ -373,7 +347,6 @@ export default function Order() {
         variant: "destructive",
       });
       
-      // Reset states
       setAndWatchLoadingState(false);
       setProcessingStep("");
       setUploadProgress(0);
@@ -385,11 +358,9 @@ export default function Order() {
       setPaymentProcessing(true);
       setProcessingStep("Setting up payment gateway...");
       
-      // Set a safety timer for payment process
       const paymentSafetyTimer = setTimeout(() => {
         console.log("PAYMENT SAFETY TIMEOUT: Forcing completion of payment process");
         
-        // Don't auto-complete the order anymore
         setPaymentProcessing(false);
         setProcessingStep("Payment timed out. Please try again.");
         
@@ -398,13 +369,10 @@ export default function Order() {
           description: "The payment process took too long. Please try again.",
           variant: "destructive",
         });
-        
       }, PAYMENT_TIMEOUT);
       
-      // Generate temporary order ID for Razorpay
       const tempOrderId = `temp_${Math.random().toString(36).substring(2, 10)}`;
       
-      // Create Razorpay order
       let razorpayOrder;
       try {
         razorpayOrder = await createRazorpayOrder(
@@ -415,7 +383,6 @@ export default function Order() {
         );
       } catch (razorpayError) {
         console.error("Error creating Razorpay order:", razorpayError);
-        // Create a fallback order
         razorpayOrder = {
           id: `fallback_${tempOrderId.substring(0, 6)}_${Math.random().toString(36).substring(2, 6)}`,
           amount: orderData.totalAmount,
@@ -427,7 +394,6 @@ export default function Order() {
       
       setProcessingStep("Processing payment...");
       
-      // Process the payment with full order data
       let paymentResult;
       try {
         paymentResult = await processPayment({
@@ -451,7 +417,6 @@ export default function Order() {
       } catch (paymentError) {
         console.error("Payment processing error:", paymentError);
         
-        // Clear the safety timer and show error
         clearTimeout(paymentSafetyTimer);
         setPaymentProcessing(false);
         setProcessingStep("Payment failed. Please try again.");
@@ -465,14 +430,11 @@ export default function Order() {
         return;
       }
       
-      // Clear the safety timer since we got a payment result
       clearTimeout(paymentSafetyTimer);
       
-      // Only create the order if payment was successful
       if (paymentResult.status === 'completed') {
         await handleOrderCreation(orderData, paymentResult);
       } else {
-        // Payment failed
         setProcessingStep("Payment failed. Please try again.");
         setPaymentProcessing(false);
         
@@ -486,7 +448,6 @@ export default function Order() {
     } catch (error) {
       console.error("Critical payment processing error:", error);
       
-      // If we're already retrying too many times, just abort
       if (retryCount > 1) {
         console.log("Too many retries, aborting payment process");
         setPaymentProcessing(false);
@@ -509,17 +470,15 @@ export default function Order() {
         variant: "default",
       });
       
-      // Wait a moment and retry automatically
       setTimeout(() => {
         setOrderError(null);
         handlePaymentProcess(orderData);
       }, 1500);
     }
   };
-  
+
   const handleOrderCreation = async (orderData: any, paymentResult: any) => {
     try {
-      // Prevent duplicate orders
       if (creatingOrder) {
         console.log("Already creating an order, preventing duplicate");
         return;
@@ -527,13 +486,11 @@ export default function Order() {
       
       setCreatingOrder(true);
       
-      // Now that payment is successful, create the order in the database
       setProcessingStep("Creating your order in the system...");
       
-      // Make sure order status is correctly set
       const finalOrderData = {
         ...orderData,
-        status: "received",
+        status: "completed",
         paymentStatus: "paid",
         paymentDetails: {
           id: paymentResult.id,
@@ -556,10 +513,9 @@ export default function Order() {
         throw new Error("Failed to create order after payment. Please contact support.");
       }
       
-      // Update order status after successful payment (to ensure it moves to "My Orders")
       try {
         await updateOrderAfterPayment(orderResult.orderId, {
-          status: "received",
+          status: "completed",
           paymentStatus: "paid"
         });
         console.log("Order status updated after payment");
@@ -567,7 +523,6 @@ export default function Order() {
         console.error("Order status update error:", updateError);
       }
       
-      // Generate and send invoice
       setProcessingStep("Generating invoice...");
       
       let invoiceResult;
@@ -581,7 +536,6 @@ export default function Order() {
         );
         
         if (invoiceResult.success && invoiceResult.pdfBlob) {
-          // Save the PDF blob and URL for download
           setInvoicePdf({
             blob: invoiceResult.pdfBlob,
             url: invoiceResult.pdfUrl
@@ -589,7 +543,7 @@ export default function Order() {
         }
       } catch (invoiceError) {
         console.error("Invoice generation error:", invoiceError);
-        // Create fallback invoice data
+        
         invoiceResult = {
           success: true,
           invoiceId: `INV-${orderData.trackingId}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`,
@@ -603,7 +557,6 @@ export default function Order() {
         });
       }
       
-      // All done - update UI
       setProcessingStep("Order completed!");
       setOrderComplete(true);
       setPaymentProcessing(false);
@@ -622,12 +575,10 @@ export default function Order() {
     } catch (error) {
       console.error("Error in order completion:", error);
       
-      // Even on error, complete the process to avoid stuck states
       setProcessingStep("Order completed with warnings");
       setOrderComplete(true);
       setPaymentProcessing(false);
       
-      // Create emergency invoice data
       const emergencyInvoice = {
         blob: new Blob(['Emergency invoice content'], { type: 'application/pdf' }),
         url: `https://example.com/invoices/emergency-${Math.random().toString(36).substring(2, 10)}.pdf`,
@@ -655,7 +606,6 @@ export default function Order() {
     document.body.appendChild(a);
     a.click();
     
-    // Clean up
     window.URL.revokeObjectURL(url);
     document.body.removeChild(a);
   };
@@ -671,7 +621,6 @@ export default function Order() {
     setProcessingStep("");
     setUploadProgress(0);
     setRetryCount(0);
-    // No need to reset other form values to allow the user to retry with same data
   };
 
   const estimatedPrice = calculateEstimatedPrice();

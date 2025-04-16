@@ -1,4 +1,3 @@
-
 interface RazorpayResponse {
   razorpay_payment_id: string;
   razorpay_order_id: string;
@@ -9,7 +8,7 @@ export interface PaymentDetails {
   id: string;
   amount: number;
   currency: string;
-  status: 'pending' | 'completed' | 'failed';
+  status: 'pending' | 'completed' | 'failed' | 'received';
   timestamp: Date;
   paymentId?: string;
   method?: string;
