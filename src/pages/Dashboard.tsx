@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -15,6 +14,7 @@ import { useToast } from "@/hooks/use-toast";
 import { ShoppingBag, FileText, Settings, Clock, Package, CheckCircle, Truck, CreditCard, Download, AlertCircle } from "lucide-react";
 import { getUserOrders } from "@/lib/invoice-service";
 import { initializeRazorpay, createRazorpayOrder, processPayment } from "@/lib/payment-service";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 interface Order {
   id: string;
@@ -69,6 +69,7 @@ interface OrderData {
 export default function Dashboard() {
   const { userData, user, updateUserProfile } = useAuth();
   const { toast } = useToast();
+  const isMobile = useIsMobile();
   const [orders, setOrders] = useState<Order[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
@@ -87,6 +88,7 @@ export default function Dashboard() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [changingPassword, setChangingPassword] = useState(false);
   const [passwordError, setPasswordError] = useState("");
+  const [orderBeingPaid, setOrderBeingPaid] = useState<string | null>(null);
 
   useEffect(() => {
     if (userData?.name) setName(userData.name);
@@ -151,24 +153,43 @@ export default function Dashboard() {
     );
   }, []);
 
-  const updateOrderAfterPayment = useCallback((orderId: string, paymentSuccess: boolean) => {
-    setOrders(prevOrders => 
-      prevOrders.map(order => 
-        order.id === orderId
-          ? {
-              ...order,
-              status: paymentSuccess ? "received" : "pending_payment",
-              paymentStatus: paymentSuccess ? "paid" : "failed"
-            }
-          : order
-      )
-    );
-    
-    // Force switching to the appropriate tab after payment
-    if (paymentSuccess) {
-      setActiveTab("orders");
+  const updateOrderAfterPayment = useCallback(async (orderId: string, paymentSuccess: boolean) => {
+    try {
+      const orderRef = doc(db, "orders", orderId);
+      await updateDoc(orderRef, {
+        status: paymentSuccess ? "received" : "pending_payment",
+        paymentStatus: paymentSuccess ? "paid" : "failed",
+        updatedAt: new Date()
+      });
+      
+      console.log(`Updated order ${orderId} status in Firebase: ${paymentSuccess ? "received/paid" : "pending/failed"}`);
+      
+      setOrders(prevOrders => 
+        prevOrders.map(order => 
+          order.id === orderId
+            ? {
+                ...order,
+                status: paymentSuccess ? "received" : "pending_payment",
+                paymentStatus: paymentSuccess ? "paid" : "failed"
+              }
+            : order
+        )
+      );
+      
+      fetchUserOrders();
+      
+      if (paymentSuccess) {
+        setActiveTab("orders");
+      }
+    } catch (error) {
+      console.error("Error updating order status in Firebase:", error);
+      toast({
+        title: "Update Error",
+        description: "There was a problem updating your order status. Please refresh the page.",
+        variant: "destructive",
+      });
     }
-  }, []);
+  }, [fetchUserOrders]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -213,6 +234,7 @@ export default function Dashboard() {
     
     try {
       setProcessingPayment(true);
+      setOrderBeingPaid(order.id);
       
       toast({
         title: "Processing Payment",
@@ -245,17 +267,26 @@ export default function Dashboard() {
           userId: userData.uid,
           customerName: userData.name || order.customerName,
           customerEmail: userData.email || order.customerEmail,
-          status: "received"
+          status: "received",
+          paymentStatus: "paid"
         }
       });
       
       console.log("Payment result received:", paymentResult);
       
       if (paymentResult.status === 'completed') {
-        updateOrderAfterPayment(order.id, true);
+        await updateOrderAfterPayment(order.id, true);
         setLastPaymentTime(Date.now());
         setActiveTab("orders"); // Switch to orders tab after successful payment
-        await fetchUserOrders();
+        
+        toast({
+          title: "Payment Successful",
+          description: "Your payment has been processed successfully. The order has moved to 'My Orders'.",
+        });
+        
+        setTimeout(() => {
+          fetchUserOrders();
+        }, 2000);
       } else {
         toast({
           title: "Payment Failed",
@@ -263,8 +294,7 @@ export default function Dashboard() {
           variant: "destructive",
         });
         
-        updateOrderAfterPayment(order.id, false);
-        await fetchUserOrders();
+        await updateOrderAfterPayment(order.id, false);
       }
     } catch (error) {
       console.error("Payment retry error:", error);
@@ -273,10 +303,10 @@ export default function Dashboard() {
         description: "An unexpected error occurred. Please try again later.",
         variant: "destructive",
       });
-      
-      fetchUserOrders();
     } finally {
       setProcessingPayment(false);
+      setOrderBeingPaid(null);
+      fetchUserOrders();
     }
   };
 
@@ -456,23 +486,22 @@ export default function Dashboard() {
       </div>
 
       <Tabs defaultValue="orders" value={activeTab} onValueChange={setActiveTab}>
-        {/* Responsive tabs for mobile */}
         <TabsList className="mb-6 flex w-full overflow-x-auto no-scrollbar max-w-full">
           <TabsTrigger value="orders" className="text-sm sm:text-base whitespace-nowrap flex-shrink-0">
             <ShoppingBag className="h-4 w-4 mr-1 sm:mr-2" /> 
-            <span className="sm:inline">Orders</span>
+            <span className={isMobile ? "sr-only" : "inline"}>Orders</span>
           </TabsTrigger>
           <TabsTrigger value="pending" className="text-sm sm:text-base whitespace-nowrap flex-shrink-0">
             <CreditCard className="h-4 w-4 mr-1 sm:mr-2" /> 
-            <span className="sm:inline">Pending Payments</span>
+            <span className={isMobile ? "sr-only" : "inline"}>Pending Payments</span>
           </TabsTrigger>
           <TabsTrigger value="invoices" className="text-sm sm:text-base whitespace-nowrap flex-shrink-0">
             <FileText className="h-4 w-4 mr-1 sm:mr-2" /> 
-            <span className="sm:inline">Invoices</span>
+            <span className={isMobile ? "sr-only" : "inline"}>Invoices</span>
           </TabsTrigger>
           <TabsTrigger value="profile" className="text-sm sm:text-base whitespace-nowrap flex-shrink-0">
             <Settings className="h-4 w-4 mr-1 sm:mr-2" /> 
-            <span className="sm:inline">Profile</span>
+            <span className={isMobile ? "sr-only" : "inline"}>Profile</span>
           </TabsTrigger>
         </TabsList>
 
@@ -621,6 +650,7 @@ export default function Dashboard() {
                         })
                         .map((order) => {
                           const paymentFailed = order.paymentStatus === "failed";
+                          const isPayingThisOrder = orderBeingPaid === order.id;
                           
                           return (
                             <tr key={order.id} className="border-b hover:bg-gray-50">
@@ -650,7 +680,7 @@ export default function Dashboard() {
                                   disabled={processingPayment}
                                   className="text-xs"
                                 >
-                                  {processingPayment ? (
+                                  {processingPayment && isPayingThisOrder ? (
                                     <>
                                       <div className="mr-2 h-3 w-3 animate-spin rounded-full border-t-2 border-white"></div>
                                       Processing...

@@ -292,7 +292,7 @@ export const processPayment = (
               console.log("Resolving payment details after successful payment:", paymentDetails);
               isProcessingPayment = false; // Reset flag
               resolve(paymentDetails);
-            }, 500);
+            }, 2000); // Increased from 500ms to 2000ms for better database sync
           },
           modal: {
             ondismiss: function () {

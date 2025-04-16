@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -389,20 +388,17 @@ export default function Order() {
       // Set a safety timer for payment process
       const paymentSafetyTimer = setTimeout(() => {
         console.log("PAYMENT SAFETY TIMEOUT: Forcing completion of payment process");
-        handleOrderCreation(orderData, {
-          id: `emergency_order_${Math.random().toString(36).substring(2, 10)}`,
-          amount: orderData.totalAmount,
-          currency: 'INR',
-          status: 'completed',
-          timestamp: new Date(),
-          paymentId: `emergency_pay_${Math.random().toString(36).substring(2, 6)}`,
-          method: 'Emergency Fallback',
-          orderData: {
-            ...orderData,
-            status: "received",
-            paymentStatus: "paid"
-          }
+        
+        // Don't auto-complete the order anymore
+        setPaymentProcessing(false);
+        setProcessingStep("Payment timed out. Please try again.");
+        
+        toast({
+          title: "Payment Timeout",
+          description: "The payment process took too long. Please try again.",
+          variant: "destructive",
         });
+        
       }, PAYMENT_TIMEOUT);
       
       // Generate temporary order ID for Razorpay
@@ -454,21 +450,19 @@ export default function Order() {
         });
       } catch (paymentError) {
         console.error("Payment processing error:", paymentError);
-        // Create a fallback payment result
-        paymentResult = {
-          id: razorpayOrder.id,
-          amount: orderData.totalAmount,
-          currency: 'INR',
-          status: 'completed',
-          timestamp: new Date(),
-          paymentId: `emergency_pay_${tempOrderId.substring(0, 6)}_${Math.random().toString(36).substring(2, 6)}`,
-          method: 'Emergency Fallback',
-          orderData: {
-            ...orderData,
-            status: "received",
-            paymentStatus: "paid"
-          }
-        };
+        
+        // Clear the safety timer and show error
+        clearTimeout(paymentSafetyTimer);
+        setPaymentProcessing(false);
+        setProcessingStep("Payment failed. Please try again.");
+        
+        toast({
+          title: "Payment Failed",
+          description: "There was an issue processing your payment. Please try again.",
+          variant: "destructive",
+        });
+        
+        return;
       }
       
       // Clear the safety timer since we got a payment result
@@ -492,24 +486,17 @@ export default function Order() {
     } catch (error) {
       console.error("Critical payment processing error:", error);
       
-      // If we're already retrying too many times, just force completion
+      // If we're already retrying too many times, just abort
       if (retryCount > 1) {
-        console.log("Too many retries, forcing order completion");
-        const emergencyPayment = {
-          id: `emergency_final_${Math.random().toString(36).substring(2, 8)}`,
-          amount: orderData.totalAmount,
-          currency: 'INR',
-          status: 'completed',
-          timestamp: new Date(),
-          paymentId: `final_fallback_${Math.random().toString(36).substring(2, 8)}`,
-          method: 'Final Emergency Fallback',
-          orderData: {
-            ...orderData,
-            status: "received",
-            paymentStatus: "paid"
-          }
-        };
-        await handleOrderCreation(orderData, emergencyPayment);
+        console.log("Too many retries, aborting payment process");
+        setPaymentProcessing(false);
+        setProcessingStep("");
+        
+        toast({
+          title: "Payment Error",
+          description: "We couldn't complete your payment after multiple attempts. Please try again later.",
+          variant: "destructive",
+        });
         return;
       }
       
@@ -567,6 +554,17 @@ export default function Order() {
       } catch (orderError) {
         console.error("Order creation error:", orderError);
         throw new Error("Failed to create order after payment. Please contact support.");
+      }
+      
+      // Update order status after successful payment (to ensure it moves to "My Orders")
+      try {
+        await updateOrderAfterPayment(orderResult.orderId, {
+          status: "received",
+          paymentStatus: "paid"
+        });
+        console.log("Order status updated after payment");
+      } catch (updateError) {
+        console.error("Order status update error:", updateError);
       }
       
       // Generate and send invoice
