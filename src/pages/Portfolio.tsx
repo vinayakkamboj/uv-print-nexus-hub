@@ -1,5 +1,11 @@
 
 import { useEffect, useState } from "react";
+import medicineBoxes from '../assets/medicinebox.jpg';
+import manual from "../assets/manual.jpg";
+import productPackaging from "../assets/productpackaging.jpg";
+import shippingLogistics from "../assets/shippinglogistics.jpg";
+import premiumStickers from "../assets/premiumstickers.jpg";
+import foodPackaging from "../assets/foodpackaging.jpg";
 
 // Sample portfolio data
 const portfolioItems = [
@@ -10,7 +16,7 @@ const portfolioItems = [
     type: "boxes",
     client: "Leading Pharmaceutical Company",
     description: "Custom designed medicine boxes with anti-counterfeiting features and vibrant UV printing for brand recognition.",
-    image: "/placeholder.svg"
+    image: medicineBoxes
   },
   {
     id: 2,
@@ -19,7 +25,7 @@ const portfolioItems = [
     type: "labels",
     client: "Auto Components Manufacturer",
     description: "Durable, weather-resistant labels for automobile parts with scannable QR codes for inventory tracking.",
-    image: "/placeholder.svg"
+    image: manual
   },
   {
     id: 3,
@@ -28,7 +34,7 @@ const portfolioItems = [
     type: "boxes",
     client: "Electronics Manufacturer",
     description: "Innovative packaging solution for consumer electronics with premium finish and multi-color UV printing.",
-    image: "/placeholder.svg"
+    image: productPackaging
   },
   {
     id: 4,
@@ -37,7 +43,7 @@ const portfolioItems = [
     type: "stickers",
     client: "Retail Chain",
     description: "High-quality promotional stickers with special effects UV printing for retail marketing campaign.",
-    image: "/placeholder.svg"
+    image: premiumStickers
   },
   {
     id: 5,
@@ -46,7 +52,7 @@ const portfolioItems = [
     type: "labels",
     client: "Logistics Service Provider",
     description: "Weather-resistant shipping labels with barcode integration for nationwide logistics operations.",
-    image: "/placeholder.svg"
+    image: shippingLogistics
   },
   {
     id: 6,
@@ -55,7 +61,7 @@ const portfolioItems = [
     type: "boxes",
     client: "Food Processing Company",
     description: "Food-grade packaging with vibrant colors and protective coatings for extended shelf life.",
-    image: "/placeholder.svg"
+    image: foodPackaging
   }
 ];
 
