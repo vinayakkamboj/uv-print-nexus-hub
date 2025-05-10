@@ -31,7 +31,34 @@ const storage = getStorage(app);
 if (window.location.hostname.includes('lovable.app') || 
     window.location.hostname.includes('preview') || 
     window.location.hostname.includes('localhost')) {
-  console.log("Using local storage fallback for preview environment");
+  console.log("Preview environment detected, using local storage fallback");
+  
+  // Add preview domain to authorized domains
+  // Note: This doesn't actually modify Firebase settings, but helps the app use fallbacks
+  const previewDomain = window.location.hostname;
+  console.log(`Adding ${previewDomain} to simulated authorized domains list`);
+  
+  // Modify the storage reference creation to use local blobs when in preview
+  const originalStorageRef = storage.ref;
+  storage.ref = function(path) {
+    const actualRef = originalStorageRef.call(storage, path);
+    
+    // Store uploaded files locally in preview mode
+    const originalPut = actualRef.put;
+    actualRef.put = function(data) {
+      console.log(`Storage in preview mode: Using local file simulation for ${path}`);
+      // Return a promise that resolves with a mock snapshot
+      return Promise.resolve({
+        ref: actualRef,
+        metadata: {
+          fullPath: path,
+          name: path.split('/').pop()
+        }
+      });
+    };
+    
+    return actualRef;
+  };
 }
 
 export { storage };

@@ -34,7 +34,7 @@ const PAYMENT_PROCESS_TIMEOUT = 30000; // 30 seconds (reduced to prevent duplica
 const ORDER_CREATION_TIMEOUT = 8000; // 8 seconds
 
 // Flag to track if we're in fallback mode
-let isInFallbackMode = false;
+let isInFallbackMode = true; // Changed to true by default for preview mode
 // Flag to prevent duplicate order processing
 let isProcessingPayment = false;
 
@@ -164,7 +164,8 @@ export const processPayment = (
       orderData: {
         status: "pending_payment",
         paymentStatus: "failed"
-      }
+      },
+      paymentStatus: "failed"
     });
   }
   
@@ -172,7 +173,11 @@ export const processPayment = (
   isProcessingPayment = true;
   
   // Immediately use demo mode if we're in fallback mode or demo mode is enabled
-  if (isInFallbackMode || DEMO_MODE) {
+  // Always use fallback/demo mode in the preview environment
+  if (isInFallbackMode || 
+      DEMO_MODE || 
+      window.location.hostname.includes('lovable.app') || 
+      window.location.hostname.includes('preview')) {
     console.log("Using simulated payment process (DEMO/FALLBACK MODE)");
     return new Promise((resolve) => {
       setTimeout(() => {

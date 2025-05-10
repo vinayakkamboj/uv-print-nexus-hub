@@ -20,7 +20,7 @@ export function Toaster() {
             <div className="grid gap-1">
               {title && <ToastTitle>{title}</ToastTitle>}
               {description && (
-                <ToastDescription>{description}</ToastDescription>
+                <ToastDescription className="text-sm break-words">{description}</ToastDescription>
               )}
             </div>
             {action}
@@ -28,7 +28,7 @@ export function Toaster() {
           </Toast>
         )
       })}
-      <ToastViewport className="p-4 md:p-6 sm:max-w-md max-w-[90vw]" />
+      <ToastViewport className="p-4 md:p-6 sm:max-w-md max-w-[90vw] z-50" />
     </ToastProvider>
   )
 }

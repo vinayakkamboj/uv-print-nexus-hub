@@ -157,25 +157,27 @@ export default function Dashboard() {
     try {
       const orderRef = doc(db, "orders", orderId);
       await updateDoc(orderRef, {
-        status: paymentSuccess ? "received" : "pending_payment",
+        status: paymentSuccess ? "received" : "pending_payment", // Changed from "received/paid" to "received" for consistency
         paymentStatus: paymentSuccess ? "paid" : "failed",
         updatedAt: new Date()
       });
       
       console.log(`Updated order ${orderId} status in Firebase: ${paymentSuccess ? "received/paid" : "pending/failed"}`);
       
+      // Immediately update the local order state to reflect the new status
       setOrders(prevOrders => 
         prevOrders.map(order => 
           order.id === orderId
             ? {
                 ...order,
-                status: paymentSuccess ? "received" : "pending_payment",
+                status: paymentSuccess ? "received" : "pending_payment", // Changed to be consistent
                 paymentStatus: paymentSuccess ? "paid" : "failed"
               }
             : order
         )
       );
       
+      // Force a refetch to ensure we have the latest data
       fetchUserOrders();
       
       if (paymentSuccess) {

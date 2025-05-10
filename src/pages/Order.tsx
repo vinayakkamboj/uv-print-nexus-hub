@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -428,7 +427,7 @@ export default function Order() {
           deliveryAddress: orderData.deliveryAddress,
           orderData: {
             ...orderData,
-            status: "received",
+            status: "received", // Changed from "completed" to "received"
             paymentStatus: "paid"
           }
         });
@@ -508,7 +507,7 @@ export default function Order() {
       
       const finalOrderData = {
         ...orderData,
-        status: "completed",
+        status: "received", // Changed from "completed" to "received"
         paymentStatus: "paid",
         paymentDetails: {
           id: paymentResult.id || paymentResult.razorpayOrderId || `generated-${Math.random().toString(36).substring(2, 10)}`,
@@ -534,7 +533,7 @@ export default function Order() {
       try {
         await updateOrderAfterPayment(orderResult.orderId, {
           id: orderResult.orderId,
-          status: "completed",
+          status: "received", // Changed from "completed" to "received" for consistency
           paymentStatus: "paid",
           timestamp: new Date(),
           amount: orderData.totalAmount,
