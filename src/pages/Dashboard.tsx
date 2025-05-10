@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { collection, query, where, getDocs, doc, updateDoc, orderBy } from "firebase/firestore";
@@ -14,7 +14,6 @@ import { useToast } from "@/hooks/use-toast";
 import { ShoppingBag, FileText, Settings, Clock, Package, CheckCircle, Truck, CreditCard, Download, AlertCircle } from "lucide-react";
 import { getUserOrders } from "@/lib/invoice-service";
 import { initializeRazorpay, createRazorpayOrder, processPayment } from "@/lib/payment-service";
-import { useIsMobile } from "@/hooks/use-mobile";
 
 interface Order {
   id: string;
@@ -69,13 +68,10 @@ interface OrderData {
 export default function Dashboard() {
   const { userData, user, updateUserProfile } = useAuth();
   const { toast } = useToast();
-  const isMobile = useIsMobile();
   const [orders, setOrders] = useState<Order[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
   const [processingPayment, setProcessingPayment] = useState(false);
-  const [lastPaymentTime, setLastPaymentTime] = useState<number | null>(null);
-  const [activeTab, setActiveTab] = useState("orders");
   const navigate = useNavigate();
 
   const [name, setName] = useState(userData?.name || "");
@@ -88,7 +84,6 @@ export default function Dashboard() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [changingPassword, setChangingPassword] = useState(false);
   const [passwordError, setPasswordError] = useState("");
-  const [orderBeingPaid, setOrderBeingPaid] = useState<string | null>(null);
 
   useEffect(() => {
     if (userData?.name) setName(userData.name);
@@ -108,8 +103,7 @@ export default function Dashboard() {
       const typedOrders = ordersData.map(order => ({
         ...order,
         status: (order.status || "pending_payment") as "pending_payment" | "received" | "processing" | "printed" | "shipped",
-        timestamp: order.timestamp || new Date(),
-        paymentStatus: order.paymentStatus || (order.status === "pending_payment" ? "pending" : "paid")
+        timestamp: order.timestamp || new Date()
       }));
       
       setOrders(typedOrders);
@@ -140,63 +134,14 @@ export default function Dashboard() {
 
   useEffect(() => {
     fetchUserOrders();
-    
-    initializeRazorpay().catch(error => {
-      console.error("Error initializing Razorpay:", error);
-    });
-  }, [userData]);
-
-  const isPendingOrder = useCallback((order: Order) => {
-    return (
-      (order.status === "pending_payment" || order.paymentStatus === "pending" || order.paymentStatus === "failed") &&
-      !["received", "processing", "printed", "shipped"].includes(order.status)
-    );
-  }, []);
-
-  const updateOrderAfterPayment = useCallback(async (orderId: string, paymentSuccess: boolean) => {
-    try {
-      const orderRef = doc(db, "orders", orderId);
-      await updateDoc(orderRef, {
-        status: paymentSuccess ? "received" : "pending_payment",
-        paymentStatus: paymentSuccess ? "paid" : "failed",
-        updatedAt: new Date()
-      });
-      
-      console.log(`Updated order ${orderId} status in Firebase: ${paymentSuccess ? "received/paid" : "pending/failed"}`);
-      
-      setOrders(prevOrders => 
-        prevOrders.map(order => 
-          order.id === orderId
-            ? {
-                ...order,
-                status: paymentSuccess ? "received" : "pending_payment",
-                paymentStatus: paymentSuccess ? "paid" : "failed"
-              }
-            : order
-        )
-      );
-      
-      fetchUserOrders();
-      
-      if (paymentSuccess) {
-        setActiveTab("orders");
-      }
-    } catch (error) {
-      console.error("Error updating order status in Firebase:", error);
-      toast({
-        title: "Update Error",
-        description: "There was a problem updating your order status. Please refresh the page.",
-        variant: "destructive",
-      });
-    }
-  }, [fetchUserOrders]);
+  }, [userData, toast]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
       case "pending_payment":
         return "bg-orange-100 text-orange-700";
       case "received":
-        return "bg-green-100 text-green-700";
+        return "bg-blue-100 text-blue-700";
       case "processing":
         return "bg-yellow-100 text-yellow-700";
       case "printed":
@@ -213,7 +158,7 @@ export default function Dashboard() {
       case "pending_payment":
         return <CreditCard className="h-4 w-4" />;
       case "received":
-        return <CheckCircle className="h-4 w-4" />;
+        return <Clock className="h-4 w-4" />;
       case "processing":
         return <Package className="h-4 w-4" />;
       case "printed":
@@ -234,7 +179,6 @@ export default function Dashboard() {
     
     try {
       setProcessingPayment(true);
-      setOrderBeingPaid(order.id);
       
       toast({
         title: "Processing Payment",
@@ -267,34 +211,43 @@ export default function Dashboard() {
           userId: userData.uid,
           customerName: userData.name || order.customerName,
           customerEmail: userData.email || order.customerEmail,
-          status: "received",
-          paymentStatus: "paid"
+          status: "received"
         }
       });
       
-      console.log("Payment result received:", paymentResult);
-      
       if (paymentResult.status === 'completed') {
-        await updateOrderAfterPayment(order.id, true);
-        setLastPaymentTime(Date.now());
-        setActiveTab("orders"); // Switch to orders tab after successful payment
-        
         toast({
           title: "Payment Successful",
-          description: "Your payment has been processed successfully. The order has moved to 'My Orders'.",
+          description: "Your payment has been successfully processed.",
         });
         
-        setTimeout(() => {
-          fetchUserOrders();
-        }, 2000);
+        setOrders(prevOrders => 
+          prevOrders.map(o => 
+            o.id === order.id 
+              ? { 
+                  ...o, 
+                  status: "received",
+                  paymentStatus: "paid", 
+                  paymentDetails: {
+                    id: paymentResult.id,
+                    paymentId: paymentResult.paymentId,
+                    method: paymentResult.method,
+                    status: "completed",
+                    timestamp: paymentResult.timestamp
+                  }
+                }
+              : o
+          )
+        );
+        
+        fetchUserOrders();
       } else {
         toast({
           title: "Payment Failed",
           description: "There was an issue processing your payment. Please try again.",
           variant: "destructive",
         });
-        
-        await updateOrderAfterPayment(order.id, false);
+        fetchUserOrders();
       }
     } catch (error) {
       console.error("Payment retry error:", error);
@@ -303,10 +256,9 @@ export default function Dashboard() {
         description: "An unexpected error occurred. Please try again later.",
         variant: "destructive",
       });
+      fetchUserOrders();
     } finally {
       setProcessingPayment(false);
-      setOrderBeingPaid(null);
-      fetchUserOrders();
     }
   };
 
@@ -430,11 +382,18 @@ export default function Dashboard() {
   };
 
   const getPendingOrders = () => {
-    return orders.filter(order => isPendingOrder(order));
+    return orders.filter(order => 
+      order.status === "pending_payment" || 
+      (order.paymentStatus === "failed" || order.paymentStatus === "pending")
+    );
   };
 
   const getCompletedOrders = () => {
-    return orders.filter(order => !isPendingOrder(order));
+    return orders.filter(order => 
+      order.status !== "pending_payment" && 
+      order.paymentStatus !== "failed" &&
+      order.paymentStatus !== "pending"
+    );
   };
 
   return (
@@ -485,23 +444,19 @@ export default function Dashboard() {
         </Card>
       </div>
 
-      <Tabs defaultValue="orders" value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="mb-6 flex w-full overflow-x-auto no-scrollbar max-w-full">
-          <TabsTrigger value="orders" className="text-sm sm:text-base whitespace-nowrap flex-shrink-0">
-            <ShoppingBag className="h-4 w-4 mr-1 sm:mr-2" /> 
-            <span className={isMobile ? "sr-only" : "inline"}>Orders</span>
+      <Tabs defaultValue="orders">
+        <TabsList className="mb-6">
+          <TabsTrigger value="orders" className="text-base">
+            <ShoppingBag className="h-4 w-4 mr-2" /> Orders
           </TabsTrigger>
-          <TabsTrigger value="pending" className="text-sm sm:text-base whitespace-nowrap flex-shrink-0">
-            <CreditCard className="h-4 w-4 mr-1 sm:mr-2" /> 
-            <span className={isMobile ? "sr-only" : "inline"}>Pending Payments</span>
+          <TabsTrigger value="pending" className="text-base">
+            <CreditCard className="h-4 w-4 mr-2" /> Pending Payments
           </TabsTrigger>
-          <TabsTrigger value="invoices" className="text-sm sm:text-base whitespace-nowrap flex-shrink-0">
-            <FileText className="h-4 w-4 mr-1 sm:mr-2" /> 
-            <span className={isMobile ? "sr-only" : "inline"}>Invoices</span>
+          <TabsTrigger value="invoices" className="text-base">
+            <FileText className="h-4 w-4 mr-2" /> Invoices
           </TabsTrigger>
-          <TabsTrigger value="profile" className="text-sm sm:text-base whitespace-nowrap flex-shrink-0">
-            <Settings className="h-4 w-4 mr-1 sm:mr-2" /> 
-            <span className={isMobile ? "sr-only" : "inline"}>Profile</span>
+          <TabsTrigger value="profile" className="text-base">
+            <Settings className="h-4 w-4 mr-2" /> Profile
           </TabsTrigger>
         </TabsList>
 
@@ -515,14 +470,14 @@ export default function Dashboard() {
                 </Link>
               </div>
             </CardHeader>
-            <CardContent className="overflow-x-auto">
+            <CardContent>
               {loading ? (
                 <div className="flex justify-center p-6">
                   <div className="animate-spin rounded-full h-12 w-12 border-t-4 border-primary border-solid"></div>
                 </div>
               ) : getCompletedOrders().length > 0 ? (
-                <div className="overflow-x-auto -mx-6 px-6">
-                  <table className="w-full min-w-[640px]">
+                <div className="overflow-x-auto">
+                  <table className="w-full">
                     <thead>
                       <tr className="border-b">
                         <th className="text-left py-3 px-4 font-medium">Order ID</th>
@@ -619,14 +574,14 @@ export default function Dashboard() {
                 </Link>
               </div>
             </CardHeader>
-            <CardContent className="overflow-x-auto">
+            <CardContent>
               {loading ? (
                 <div className="flex justify-center p-6">
                   <div className="animate-spin rounded-full h-12 w-12 border-t-4 border-primary border-solid"></div>
                 </div>
               ) : getPendingOrders().length > 0 ? (
-                <div className="overflow-x-auto -mx-6 px-6">
-                  <table className="w-full min-w-[640px]">
+                <div className="overflow-x-auto">
+                  <table className="w-full">
                     <thead>
                       <tr className="border-b">
                         <th className="text-left py-3 px-4 font-medium">Order ID</th>
@@ -650,7 +605,6 @@ export default function Dashboard() {
                         })
                         .map((order) => {
                           const paymentFailed = order.paymentStatus === "failed";
-                          const isPayingThisOrder = orderBeingPaid === order.id;
                           
                           return (
                             <tr key={order.id} className="border-b hover:bg-gray-50">
@@ -680,7 +634,7 @@ export default function Dashboard() {
                                   disabled={processingPayment}
                                   className="text-xs"
                                 >
-                                  {processingPayment && isPayingThisOrder ? (
+                                  {processingPayment ? (
                                     <>
                                       <div className="mr-2 h-3 w-3 animate-spin rounded-full border-t-2 border-white"></div>
                                       Processing...
@@ -716,14 +670,14 @@ export default function Dashboard() {
             <CardHeader>
               <CardTitle>Invoice History</CardTitle>
             </CardHeader>
-            <CardContent className="overflow-x-auto">
+            <CardContent>
               {loading ? (
                 <div className="flex justify-center p-6">
                   <div className="animate-spin rounded-full h-12 w-12 border-t-4 border-primary border-solid"></div>
                 </div>
               ) : invoices.length > 0 ? (
-                <div className="overflow-x-auto -mx-6 px-6">
-                  <table className="w-full min-w-[640px]">
+                <div className="overflow-x-auto">
+                  <table className="w-full">
                     <thead>
                       <tr className="border-b">
                         <th className="text-left py-3 px-4 font-medium">Invoice ID</th>

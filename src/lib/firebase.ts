@@ -18,23 +18,12 @@ const firebaseConfig = {
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
+const analytics = getAnalytics(app);
 
 // Initialize Firebase services
 export const auth = getAuth(app);
 export const db = getFirestore(app);
-
-// Initialize Storage with custom settings to help with CORS issues
-const storage = getStorage(app);
-
-// Patch the storage to use demo mode for preview environment
-// This helps prevent CORS issues in the preview environment
-if (window.location.hostname.includes('lovable.app') || 
-    window.location.hostname.includes('preview') || 
-    window.location.hostname.includes('localhost')) {
-  console.log("Using local storage fallback for preview environment");
-}
-
-export { storage };
+export const storage = getStorage(app);
 
 // Initialize Analytics conditionally (browser only)
 export const initAnalytics = async () => {

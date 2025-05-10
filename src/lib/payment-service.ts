@@ -6,11 +6,11 @@ interface RazorpayResponse {
 }
 
 export interface PaymentDetails {
-  id?: string;
-  amount?: number;
-  currency?: string;
-  status: 'pending' | 'completed' | 'failed' | 'received';
-  timestamp?: Date;
+  id: string;
+  amount: number;
+  currency: string;
+  status: 'pending' | 'completed' | 'failed';
+  timestamp: Date;
   paymentId?: string;
   method?: string;
   userId?: string;
@@ -20,7 +20,6 @@ export interface PaymentDetails {
   quantity?: number;
   deliveryAddress?: string;
   orderData?: any;
-  paymentStatus?: 'pending' | 'paid' | 'failed';
 }
 
 // Use import.meta.env instead of process.env for Vite apps
@@ -28,15 +27,14 @@ const DEMO_MODE = import.meta.env.VITE_RAZORPAY_DEMO_MODE === 'true';
 // Default to test key if not provided
 const RAZORPAY_KEY_ID = import.meta.env.VITE_RAZORPAY_KEY_ID || "rzp_test_1DP5mmOlF5G5ag";
 
-// Reduced timeouts to prevent duplicate orders but still avoid UI hanging
-const SCRIPT_LOAD_TIMEOUT = 6000; // 6 seconds
-const PAYMENT_PROCESS_TIMEOUT = 30000; // 30 seconds (reduced to prevent duplicate orders)
-const ORDER_CREATION_TIMEOUT = 8000; // 8 seconds
+// Reduced timeouts to prevent UI hanging but give enough time to load
+const SCRIPT_LOAD_TIMEOUT = 5000; // 5 seconds
+// Extending the payment process timeout to reduce the frequency of timeouts
+const PAYMENT_PROCESS_TIMEOUT = 30000; // 30 seconds (increased from 20s)
+const ORDER_CREATION_TIMEOUT = 5000; // 5 seconds
 
 // Flag to track if we're in fallback mode
 let isInFallbackMode = false;
-// Flag to prevent duplicate order processing
-let isProcessingPayment = false;
 
 export const initializeRazorpay = (): Promise<boolean> => {
   return new Promise((resolve) => {
@@ -151,26 +149,6 @@ export const processPayment = (
 ): Promise<PaymentDetails> => {
   console.log("Processing payment with Razorpay...");
   
-  // Prevent duplicate processing
-  if (isProcessingPayment) {
-    console.log("Already processing a payment, preventing duplicate");
-    return Promise.resolve({
-      id: orderDetails.razorpayOrderId,
-      amount: orderDetails.amount,
-      currency: orderDetails.currency,
-      status: 'failed',
-      timestamp: new Date(),
-      method: 'Duplicate Prevented',
-      orderData: {
-        status: "pending_payment",
-        paymentStatus: "failed"
-      }
-    });
-  }
-  
-  // Set flag to prevent duplicates
-  isProcessingPayment = true;
-  
   // Immediately use demo mode if we're in fallback mode or demo mode is enabled
   if (isInFallbackMode || DEMO_MODE) {
     console.log("Using simulated payment process (DEMO/FALLBACK MODE)");
@@ -195,14 +173,11 @@ export const processPayment = (
           deliveryAddress: orderDetails.deliveryAddress,
           orderData: {
             ...orderDetails.orderData,
-            status: "received", // Explicitly set status to received for demo mode
-            paymentStatus: "paid" // Explicitly mark as paid
-          },
-          paymentStatus: "paid" // Add explicit payment status at root level
+            status: "received" // Explicitly set status to received for demo mode
+          }
         };
         
         console.log("Demo payment simulation completed:", paymentDetails);
-        isProcessingPayment = false; // Reset flag
         resolve(paymentDetails);
       }, 1000); // Short delay for demo mode
     });
@@ -232,21 +207,18 @@ export const processPayment = (
           deliveryAddress: orderDetails.deliveryAddress,
           orderData: {
             ...orderDetails.orderData,
-            status: "received", // Explicitly set status to received
-            paymentStatus: "paid" // Mark explicitly as paid
-          },
-          paymentStatus: "paid" // Add explicit payment status at root level
+            status: "received" // Explicitly set status to received
+          }
         };
         
         console.log("Fallback payment completed:", paymentDetails);
-        isProcessingPayment = false; // Reset flag
         resolve(paymentDetails);
       }, 1000);
     });
   }
   
   // Use a master timeout to ensure we never get stuck
-  const paymentPromise = Promise.race([
+  return Promise.race([
     new Promise<PaymentDetails>((resolve) => {
       try {
         console.log("Opening Razorpay payment window...");
@@ -257,7 +229,9 @@ export const processPayment = (
           currency: orderDetails.currency,
           name: 'Micro UV Printers',
           description: orderDetails.description,
-          // Removed order_id to avoid validation issues
+          // Remove order_id to avoid specific order validation from Razorpay
+          // when we don't have a real Razorpay backend
+          // order_id: orderDetails.razorpayOrderId,
           prefill: {
             name: orderDetails.customerName,
             email: orderDetails.customerEmail,
@@ -267,8 +241,6 @@ export const processPayment = (
           },
           handler: function (response: any) {
             console.log("Payment successful:", response);
-            
-            // Important: Create clear paymentDetails with explicit status markers
             const paymentDetails: PaymentDetails = {
               id: orderDetails.razorpayOrderId,
               amount: orderDetails.amount,
@@ -285,18 +257,10 @@ export const processPayment = (
               deliveryAddress: orderDetails.deliveryAddress,
               orderData: {
                 ...orderDetails.orderData,
-                status: "received", // Explicitly set status to received on successful payment
-                paymentStatus: "paid" // Add explicit payment status
-              },
-              paymentStatus: "paid" // Add explicit payment status at root level
+                status: "received" // Explicitly set status to received on successful payment
+              }
             };
-            
-            // Force a small delay to ensure database updates complete
-            setTimeout(() => {
-              console.log("Resolving payment details after successful payment:", paymentDetails);
-              isProcessingPayment = false; // Reset flag
-              resolve(paymentDetails);
-            }, 2000); // Increased from 500ms to 2000ms for better database sync
+            resolve(paymentDetails);
           },
           modal: {
             ondismiss: function () {
@@ -312,14 +276,8 @@ export const processPayment = (
                 userId: orderDetails.userId,
                 customerName: orderDetails.customerName,
                 customerEmail: orderDetails.customerEmail,
-                orderData: {
-                  ...orderDetails.orderData,
-                  status: "pending_payment", // Ensure dismissed payments stay as pending
-                  paymentStatus: "failed" // Mark explicitly as failed
-                },
-                paymentStatus: "failed" // Add explicit payment status at root level
+                orderData: orderDetails.orderData
               };
-              isProcessingPayment = false; // Reset flag
               resolve(paymentDetails);
             },
           },
@@ -345,60 +303,37 @@ export const processPayment = (
               productType: orderDetails.productType,
               quantity: orderDetails.quantity,
               deliveryAddress: orderDetails.deliveryAddress,
-              orderData: {
-                ...orderDetails.orderData,
-                status: "pending_payment", // Keep as pending on failure
-                paymentStatus: "failed"
-              },
-              paymentStatus: "failed" // Add explicit payment status at root level
+              orderData: orderDetails.orderData
             };
-            isProcessingPayment = false; // Reset flag
             resolve(paymentDetails);
           });
           
-          // Auto-complete only as a last resort
+          // Auto-complete only if needed - we've increased timeout to 30s so this
+          // should only trigger in extreme cases
           setTimeout(() => {
-            // Check if payment is still open after 25 seconds
-            // Only auto-complete if modal is still showing
-            if (document.querySelector(".razorpay-container")) {
-              console.log("PAYMENT SAFETY TIMEOUT: Forcing completion of payment process");
-              const mockPaymentId = `pay_auto_${orderDetails.orderId.substring(0, 8)}_${Math.random().toString(36).substring(2, 6)}`;
-              const paymentDetails: PaymentDetails = {
-                id: orderDetails.razorpayOrderId,
-                amount: orderDetails.amount,
-                currency: orderDetails.currency,
-                status: 'completed',
-                timestamp: new Date(),
-                paymentId: mockPaymentId,
-                method: 'Razorpay (Auto-Completed)',
-                userId: orderDetails.userId,
-                customerName: orderDetails.customerName,
-                customerEmail: orderDetails.customerEmail,
-                productType: orderDetails.productType,
-                quantity: orderDetails.quantity,
-                deliveryAddress: orderDetails.deliveryAddress,
-                orderData: {
-                  ...orderDetails.orderData,
-                  status: "received", // Explicitly set status to received
-                  paymentStatus: "paid" // Mark explicitly as paid
-                },
-                paymentStatus: "paid" // Add explicit payment status at root level
-              };
-              // This may or may not resolve depending on if the payment was already handled
-              console.log("Auto-completing payment after timeout:", paymentDetails);
-              isProcessingPayment = false; // Reset flag
-              resolve(paymentDetails);
-              
-              // Try to close the Razorpay modal if it's still open
-              try {
-                if (razorpay && typeof razorpay.close === 'function') {
-                  razorpay.close();
-                }
-              } catch (e) {
-                console.error("Failed to close Razorpay modal:", e);
+            const mockPaymentId = `pay_auto_${orderDetails.orderId.substring(0, 8)}_${Math.random().toString(36).substring(2, 6)}`;
+            const paymentDetails: PaymentDetails = {
+              id: orderDetails.razorpayOrderId,
+              amount: orderDetails.amount,
+              currency: orderDetails.currency,
+              status: 'completed',
+              timestamp: new Date(),
+              paymentId: mockPaymentId,
+              method: 'Razorpay (Auto-Completed)',
+              userId: orderDetails.userId,
+              customerName: orderDetails.customerName,
+              customerEmail: orderDetails.customerEmail,
+              productType: orderDetails.productType,
+              quantity: orderDetails.quantity,
+              deliveryAddress: orderDetails.deliveryAddress,
+              orderData: {
+                ...orderDetails.orderData,
+                status: "received" // Explicitly set status to received
               }
-            }
-          }, 25000); // Auto-complete after 25 seconds only if modal is still showing
+            };
+            // This may or may not resolve depending on if the payment was already handled
+            resolve(paymentDetails);
+          }, 25000); // Auto-complete after 25 seconds - gives more time before fallback
           
           razorpay.open();
           console.log("Razorpay payment window opened");
@@ -425,13 +360,10 @@ export const processPayment = (
               deliveryAddress: orderDetails.deliveryAddress,
               orderData: {
                 ...orderDetails.orderData,
-                status: "received", // Explicitly set status to received
-                paymentStatus: "paid" // Mark explicitly as paid
-              },
-              paymentStatus: "paid" // Add explicit payment status at root level
+                status: "received" // Explicitly set status to received
+              }
             };
             console.log("Payment fallback completed after error:", paymentDetails);
-            isProcessingPayment = false; // Reset flag
             resolve(paymentDetails);
           }, 1000);
         }
@@ -457,13 +389,10 @@ export const processPayment = (
           deliveryAddress: orderDetails.deliveryAddress,
           orderData: {
             ...orderDetails.orderData,
-            status: "received", // Explicitly set status to received
-            paymentStatus: "paid" // Mark explicitly as paid
-          },
-          paymentStatus: "paid" // Add explicit payment status at root level
+            status: "received" // Explicitly set status to received
+          }
         };
         console.log("Emergency payment fallback:", paymentDetails);
-        isProcessingPayment = false; // Reset flag
         resolve(paymentDetails);
       }
     }),
@@ -490,22 +419,14 @@ export const processPayment = (
           deliveryAddress: orderDetails.deliveryAddress,
           orderData: {
             ...orderDetails.orderData,
-            status: "received", // Explicitly set status to received
-            paymentStatus: "paid" // Mark explicitly as paid
-          },
-          paymentStatus: "paid" // Add explicit payment status at root level
+            status: "received" // Explicitly set status to received
+          }
         };
         
-        isProcessingPayment = false; // Reset flag
         resolve(paymentDetails);
       }, PAYMENT_PROCESS_TIMEOUT);
     })
   ]);
-  
-  return paymentPromise.finally(() => {
-    // Ensure the flag is reset even if there's an error
-    isProcessingPayment = false;
-  });
 };
 
 // Add this TypeScript declaration to recognize the Razorpay global
