@@ -1,10 +1,9 @@
-
 import { useEffect, useState } from "react";
 import medicineBoxes from '../assets/medicinebox.jpg';
 import manual from "../assets/manual.jpg";
 import productPackaging from "../assets/productPackaging.jpg";
 import shippingLogistics from "../assets/shippingLogistics.jpg"; // Fixed casing
-import premiumStickers from "../assets/premiumstickers.jpg";
+import premiumStickers from "../assets/premiumStickers.jpg"; // Fixed casing
 import foodPackaging from "../assets/foodpackaging.jpg";
 
 // Sample portfolio data
