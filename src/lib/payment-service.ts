@@ -9,7 +9,7 @@ export interface PaymentDetails {
   id?: string;
   amount?: number;
   currency?: string;
-  status: 'pending' | 'completed' | 'failed' | 'received';
+  status: 'pending' | 'received' | 'completed' | 'failed';
   timestamp?: Date;
   paymentId?: string;
   method?: string;

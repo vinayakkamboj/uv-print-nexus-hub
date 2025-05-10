@@ -26,7 +26,7 @@ import { useToast } from "@/hooks/use-toast";
 import { generateId, isValidGSTIN } from "@/lib/utils";
 import { AlertCircle, Upload, Download } from "lucide-react";
 import { createOrder, updateOrderAfterPayment, createAndSendInvoice } from "@/lib/invoice-service";
-import { initializeRazorpay, createRazorpayOrder, processPayment } from "@/lib/payment-service";
+import { initializeRazorpay, createRazorpayOrder, processPayment, PaymentDetails } from "@/lib/payment-service";
 import { Progress } from "@/components/ui/progress";
 
 const productTypes = [
@@ -553,9 +553,9 @@ export default function Order() {
       }
       
       try {
-        const updateData = {
+        const updateData: PaymentDetails = {
           id: orderResult.orderId,
-          status: "received", // Consistently use "received" for completed orders
+          status: "received" as "pending" | "received" | "completed" | "failed", // Explicitly cast to the union type
           paymentStatus: "paid",
           timestamp: new Date(),
           amount: orderData.totalAmount,
