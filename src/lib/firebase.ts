@@ -26,8 +26,8 @@ export const db = getFirestore(app);
 // Initialize Storage
 const storage = getStorage(app);
 
-// Define storageRef function outside conditionals
-let storageRef;
+// Define storageRef function outside conditionals to avoid syntax errors
+let storageRef: (path: string) => any;
 
 // Patch the storage to use demo mode for preview environment
 // This helps prevent CORS issues in the preview environment
@@ -42,14 +42,14 @@ if (window.location.hostname.includes('lovable.app') ||
   console.log(`Adding ${previewDomain} to simulated authorized domains list`);
   
   // Create a wrapper function that will intercept storage operations
-  const createLocalStorageRef = function(storageInstance, path) {
+  const createLocalStorageRef = function(storageInstance: any, path: string) {
     const actualRef = ref(storageInstance, path);
     
     // Create a proxy object to intercept operations
     const proxiedRef = Object.create(actualRef);
     
     // Add a put method that returns a mock response
-    proxiedRef.put = function(data) {
+    proxiedRef.put = function(data: any) {
       console.log(`Storage in preview mode: Using local file simulation for ${path}`);
       // Return a promise that resolves with a mock snapshot
       return Promise.resolve({

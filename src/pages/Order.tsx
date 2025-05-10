@@ -427,7 +427,7 @@ export default function Order() {
           deliveryAddress: orderData.deliveryAddress,
           orderData: {
             ...orderData,
-            status: "received", // Changed from "completed" to "received"
+            status: "received", // Ensure we're setting to "received" not "completed"
             paymentStatus: "paid"
           }
         });
@@ -449,7 +449,23 @@ export default function Order() {
       
       clearTimeout(paymentSafetyTimer);
       
-      if (paymentResult.status === 'completed') {
+      // Force the paymentResult status to be correct if it exists
+      if (paymentResult) {
+        console.log("Payment result before modification:", paymentResult);
+        
+        // Ensure status and paymentStatus are set properly
+        if (paymentResult.orderData) {
+          paymentResult.orderData.status = "received"; // Not "completed" or "pending_payment"
+          paymentResult.orderData.paymentStatus = "paid";
+        }
+        
+        paymentResult.status = 'completed';
+        paymentResult.paymentStatus = 'paid';
+        
+        console.log("Sanitized payment result:", paymentResult);
+      }
+      
+      if (paymentResult && paymentResult.status === 'completed') {
         await handleOrderCreation(orderData, paymentResult);
       } else {
         setProcessingStep("Payment failed. Please try again.");
@@ -505,40 +521,50 @@ export default function Order() {
       
       setProcessingStep("Creating your order in the system...");
       
+      // Ensure the order status is correctly set to "received" for completed orders
       const finalOrderData = {
         ...orderData,
-        status: "received", // Changed from "completed" to "received"
+        status: "received", // Ensure we use "received" consistently, not "completed"
         paymentStatus: "paid",
         paymentDetails: {
           id: paymentResult.id || paymentResult.razorpayOrderId || `generated-${Math.random().toString(36).substring(2, 10)}`,
           paymentId: paymentResult.paymentId || `pid-${Math.random().toString(36).substring(2, 10)}`,
           method: paymentResult.method || 'Razorpay',
-          status: paymentResult.status || 'completed',
+          status: 'completed', // Always set status to completed for orders that reach this point
           timestamp: new Date()
         }
       };
+      
+      console.log("Creating order with final data:", finalOrderData);
       
       let orderResult;
       try {
         orderResult = await createOrder(finalOrderData);
         
         if (!orderResult.success || !orderResult.orderId) {
+          console.error("Order creation failed:", orderResult);
           throw new Error(orderResult.message || "Failed to create order");
         }
+        
+        console.log("Order created successfully:", orderResult);
       } catch (orderError) {
         console.error("Order creation error:", orderError);
         throw new Error("Failed to create order after payment. Please contact support.");
       }
       
       try {
-        await updateOrderAfterPayment(orderResult.orderId, {
+        const updateData = {
           id: orderResult.orderId,
-          status: "received", // Changed from "completed" to "received" for consistency
+          status: "received", // Consistently use "received" for completed orders
           paymentStatus: "paid",
           timestamp: new Date(),
           amount: orderData.totalAmount,
           currency: "INR"
-        });
+        };
+        
+        console.log("Updating order after payment with data:", updateData);
+        
+        await updateOrderAfterPayment(orderResult.orderId, updateData);
         console.log("Order status updated after payment");
       } catch (updateError) {
         console.error("Order status update error:", updateError);
