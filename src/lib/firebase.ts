@@ -26,6 +26,9 @@ export const db = getFirestore(app);
 // Initialize Storage
 const storage = getStorage(app);
 
+// Define storageRef function outside conditionals
+let storageRef;
+
 // Patch the storage to use demo mode for preview environment
 // This helps prevent CORS issues in the preview environment
 if (window.location.hostname.includes('lovable.app') || 
@@ -38,39 +41,38 @@ if (window.location.hostname.includes('lovable.app') ||
   const previewDomain = window.location.hostname;
   console.log(`Adding ${previewDomain} to simulated authorized domains list`);
   
-  // Create patched storage reference functions - using the imported 'ref' function
-  const originalRef = ref;
   // Create a wrapper function that will intercept storage operations
   const createLocalStorageRef = function(storageInstance, path) {
-    const actualRef = originalRef(storageInstance, path);
+    const actualRef = ref(storageInstance, path);
     
-    // Store uploaded files locally in preview mode
-    const originalPut = actualRef.put;
-    if (originalPut) {
-      actualRef.put = function(data) {
-        console.log(`Storage in preview mode: Using local file simulation for ${path}`);
-        // Return a promise that resolves with a mock snapshot
-        return Promise.resolve({
-          ref: actualRef,
-          metadata: {
-            fullPath: path,
-            name: path.split('/').pop()
-          }
-        });
-      };
-    }
+    // Create a proxy object to intercept operations
+    const proxiedRef = Object.create(actualRef);
     
-    return actualRef;
+    // Add a put method that returns a mock response
+    proxiedRef.put = function(data) {
+      console.log(`Storage in preview mode: Using local file simulation for ${path}`);
+      // Return a promise that resolves with a mock snapshot
+      return Promise.resolve({
+        ref: actualRef,
+        metadata: {
+          fullPath: path,
+          name: path.split('/').pop()
+        }
+      });
+    };
+    
+    return proxiedRef;
   };
 
-  // Export patched version that works in preview environments
-  export const storageRef = (path) => createLocalStorageRef(storage, path);
+  // Set the storageRef function for preview environments
+  storageRef = (path) => createLocalStorageRef(storage, path);
 } else {
   // In production, use the regular ref function
-  export const storageRef = (path) => ref(storage, path);
+  storageRef = (path) => ref(storage, path);
 }
 
-export { storage };
+// Export storageRef after it's been defined
+export { storageRef, storage };
 
 // Initialize Analytics conditionally (browser only)
 export const initAnalytics = async () => {
