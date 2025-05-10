@@ -1,8 +1,7 @@
-
 import { useEffect, useState } from "react";
 import medicineBoxes from '../assets/medicinebox.jpg';
 import manual from "../assets/manual.jpg";
-import productPackaging from "../assets/productpackaging.jpg";
+import productPackaging from "../assets/productPackaging.jpg";
 import shippingLogistics from "../assets/shippinglogistics.jpg";
 import premiumStickers from "../assets/premiumstickers.jpg";
 import foodPackaging from "../assets/foodpackaging.jpg";
