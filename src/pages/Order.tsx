@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -47,6 +48,7 @@ const hsnCodes = {
 
 const SAFETY_TIMEOUT = 20000;
 const PAYMENT_TIMEOUT = 15000;
+const DEMO_MODE = import.meta.env.VITE_RAZORPAY_DEMO_MODE === 'true';
 
 export default function Order() {
   const { user, userData } = useAuth();
@@ -73,6 +75,7 @@ export default function Order() {
   const [orderData, setOrderData] = useState<any>(null);
   const [fileUrl, setFileUrl] = useState<string>("");
   const [creatingOrder, setCreatingOrder] = useState(false);
+  const [paymentSuccessful, setPaymentSuccessful] = useState(false);
 
   useEffect(() => {
     if (userData?.gstNumber) {
@@ -84,16 +87,14 @@ export default function Order() {
   }, [userData]);
 
   useEffect(() => {
-    initializeRazorpay()
-      .then((success) => {
-        if (!success) {
-          console.log("Razorpay SDK failed to load - this is fine in demo mode");
-        }
-      })
-      .catch(error => {
-        console.error("Error initializing Razorpay:", error);
-      });
-      
+    // Initialize Razorpay on component mount
+    const loadRazorpay = async () => {
+      const success = await initializeRazorpay();
+      console.log("Razorpay initialization:", success ? "successful" : "failed");
+    };
+    
+    loadRazorpay();
+    
     return () => {
       if (safetyTimer) {
         clearTimeout(safetyTimer);
@@ -190,10 +191,8 @@ export default function Order() {
     let uploadedFileUrl = "";
     
     simulateProgress(5, 40, 1000);
-
-    const demoMode = import.meta.env.VITE_RAZORPAY_DEMO_MODE === 'true';
     
-    if (demoMode) {
+    if (DEMO_MODE) {
       console.log("Demo mode - simulating file upload");
       await new Promise(resolve => setTimeout(resolve, 500));
       
@@ -375,6 +374,9 @@ export default function Order() {
       setPaymentProcessing(true);
       setProcessingStep("Setting up payment gateway...");
       
+      // Reset any existing payment success state
+      setPaymentSuccessful(false);
+      
       const paymentSafetyTimer = setTimeout(() => {
         console.log("PAYMENT SAFETY TIMEOUT: Forcing completion of payment process");
         
@@ -390,6 +392,7 @@ export default function Order() {
       
       const tempOrderId = `temp_${Math.random().toString(36).substring(2, 10)}`;
       
+      // Create Razorpay order
       let razorpayOrder;
       try {
         razorpayOrder = await createRazorpayOrder(
@@ -398,6 +401,12 @@ export default function Order() {
           orderData.customerName,
           orderData.customerEmail
         );
+        
+        console.log("Razorpay order created:", razorpayOrder);
+        
+        if (!razorpayOrder || !razorpayOrder.id) {
+          throw new Error("Failed to create Razorpay order");
+        }
       } catch (razorpayError) {
         console.error("Error creating Razorpay order:", razorpayError);
         razorpayOrder = {
@@ -411,6 +420,7 @@ export default function Order() {
       
       setProcessingStep("Processing payment...");
       
+      // Process payment with Razorpay
       let paymentResult;
       try {
         paymentResult = await processPayment({
@@ -431,6 +441,19 @@ export default function Order() {
             paymentStatus: "paid"
           }
         });
+        
+        console.log("Payment result:", paymentResult);
+        
+        // Validate payment result
+        if (!paymentResult) {
+          throw new Error("Payment failed - no result returned");
+        }
+        
+        // If payment was successful, set flag
+        if (paymentResult.status === 'completed') {
+          setPaymentSuccessful(true);
+        }
+        
       } catch (paymentError) {
         console.error("Payment processing error:", paymentError);
         
@@ -459,8 +482,8 @@ export default function Order() {
           paymentResult.orderData.paymentStatus = "paid";
         }
         
-        paymentResult.status = 'completed';
-        paymentResult.paymentStatus = 'paid';
+        paymentResult.status = paymentResult.status === 'completed' ? 'completed' : 'failed';
+        paymentResult.paymentStatus = paymentResult.status === 'completed' ? 'paid' : 'failed';
         
         console.log("Sanitized payment result:", paymentResult);
       }
@@ -555,7 +578,7 @@ export default function Order() {
       try {
         const updateData: PaymentDetails = {
           id: orderResult.orderId,
-          status: "received" as "pending" | "received" | "completed" | "failed", // Explicitly cast to the union type
+          status: "received" as "pending" | "received" | "completed" | "failed",
           paymentStatus: "paid",
           timestamp: new Date(),
           amount: orderData.totalAmount,

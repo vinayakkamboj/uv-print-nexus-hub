@@ -1,3 +1,4 @@
+
 import { generateInvoicePDF, InvoiceData } from "./invoice-generator";
 import { sendInvoiceEmail } from "./email-service";
 import { generateId } from "./utils";
@@ -8,10 +9,10 @@ import { collection, addDoc, serverTimestamp, doc, updateDoc, where, query, getD
 // Use import.meta.env instead of process.env for Vite apps
 const DEMO_MODE = import.meta.env.VITE_RAZORPAY_DEMO_MODE === 'true';
 
-// Increased timeouts to prevent UI freezing
+// Constants
 const ORDER_CREATION_TIMEOUT = 5000;
 const INVOICE_GENERATION_TIMEOUT = 3000;
-const QUERY_TIMEOUT = 8000; // Increased timeout for query operations
+const QUERY_TIMEOUT = 8000;
 
 export interface OrderData {
   id: string;
@@ -73,10 +74,10 @@ export const createOrder = async (orderData: Omit<OrderData, "id">): Promise<{
         // Create a new order document with the current timestamp and ensure userId is included
         const orderRef = await addDoc(collection(db, "orders"), {
           ...orderData,
-          status: "pending_payment",
+          status: orderData.status || "pending_payment",  // Use provided status or default
           timestamp: serverTimestamp(),
           trackingId,
-          paymentStatus: "pending",
+          paymentStatus: orderData.paymentStatus || "pending",  // Use provided paymentStatus or default
           lastUpdated: serverTimestamp(),
         });
         
@@ -129,6 +130,16 @@ export const updateOrderAfterPayment = async (orderId: string, paymentDetails: P
 }> => {
   console.log("Updating order after payment:", { orderId, paymentDetails });
   
+  // Check if status is valid
+  const validStatus = paymentDetails.status === 'completed' ? "received" : 
+                     (paymentDetails.status === 'failed' ? "pending_payment" : "pending_payment");
+  
+  // Check if paymentStatus is valid
+  const validPaymentStatus = paymentDetails.status === 'completed' ? "paid" : 
+                            (paymentDetails.status === 'failed' ? "failed" : "pending");
+  
+  console.log("Using validated statuses:", { validStatus, validPaymentStatus });
+  
   // If we're in demo mode or in fallback mode, let's still attempt to add the demo data to Firestore
   // This ensures orders show up in the dashboard even in demo/fallback mode
   if (DEMO_MODE || isInFallbackMode) {
@@ -151,9 +162,9 @@ export const updateOrderAfterPayment = async (orderId: string, paymentDetails: P
           totalAmount: paymentDetails.amount,
           customerName: paymentDetails.customerName || "Demo Customer",
           customerEmail: paymentDetails.customerEmail || "demo@example.com",
-          status: "received", // Mark as received since payment is complete
+          status: validStatus, // Mark as received since payment is complete
           trackingId: trackingId,
-          paymentStatus: paymentDetails.status === 'completed' ? "paid" : "failed",
+          paymentStatus: validPaymentStatus,
           paymentDetails: {
             id: paymentDetails.id,
             paymentId: paymentDetails.paymentId,
@@ -185,8 +196,8 @@ export const updateOrderAfterPayment = async (orderId: string, paymentDetails: P
         // Update the order document with payment details
         const orderRef = doc(db, "orders", orderId);
         await updateDoc(orderRef, {
-          status: "received",
-          paymentStatus: paymentDetails.status === 'completed' ? "paid" : "failed",
+          status: validStatus, // Use the validated status
+          paymentStatus: validPaymentStatus, // Use the validated payment status
           paymentDetails: {
             id: paymentDetails.id,
             paymentId: paymentDetails.paymentId,
@@ -213,8 +224,8 @@ export const updateOrderAfterPayment = async (orderId: string, paymentDetails: P
             const newOrderRef = await addDoc(collection(db, "orders"), {
               ...paymentDetails.orderData,
               id: orderId, // Keep original order ID for reference
-              status: "received",
-              paymentStatus: paymentDetails.status === 'completed' ? "paid" : "failed",
+              status: validStatus, // Use the validated status
+              paymentStatus: validPaymentStatus, // Use the validated payment status
               paymentDetails: {
                 id: paymentDetails.id,
                 paymentId: paymentDetails.paymentId,
