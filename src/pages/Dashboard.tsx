@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { collection, query, where, getDocs, doc, updateDoc, orderBy } from "firebase/firestore";
 import { updatePassword, reauthenticateWithCredential, EmailAuthProvider } from "firebase/auth";
@@ -13,6 +13,7 @@ import { formatDate, formatCurrency, isValidGSTIN } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { ShoppingBag, FileText, Settings, Clock, Package, CheckCircle, Truck, CreditCard, Download, AlertCircle } from "lucide-react";
 import { getUserOrders } from "@/lib/invoice-service";
+import { initializeRazorpay, createRazorpayOrder, processPayment } from "@/lib/payment-service";
 
 interface Order {
   id: string;
@@ -28,6 +29,12 @@ interface Order {
     status: string;
     timestamp: any;
   };
+  paymentStatus?: string;
+  trackingId?: string;
+  userId?: string;
+  customerName?: string;
+  customerEmail?: string;
+  deliveryAddress?: string;
 }
 
 interface Invoice {
@@ -64,6 +71,8 @@ export default function Dashboard() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [loading, setLoading] = useState(true);
+  const [processingPayment, setProcessingPayment] = useState(false);
+  const navigate = useNavigate();
 
   const [name, setName] = useState(userData?.name || "");
   const [phone, setPhone] = useState(userData?.phone || "");
@@ -82,49 +91,49 @@ export default function Dashboard() {
     if (userData?.gstNumber) setGstNumber(userData.gstNumber);
   }, [userData]);
 
+  const fetchUserOrders = async () => {
+    if (!userData?.uid) return;
+    
+    try {
+      setLoading(true);
+      
+      const ordersData = await getUserOrders(userData.uid);
+      console.log("Fetched orders:", ordersData);
+      
+      const typedOrders = ordersData.map(order => ({
+        ...order,
+        status: (order.status || "pending_payment") as "pending_payment" | "received" | "processing" | "printed" | "shipped",
+        timestamp: order.timestamp || new Date()
+      }));
+      
+      setOrders(typedOrders);
+
+      const invoicesQuery = query(
+        collection(db, "invoices"),
+        where("userId", "==", userData.uid)
+      );
+      const invoicesSnapshot = await getDocs(invoicesQuery);
+      const invoicesData = invoicesSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Invoice[];
+      setInvoices(invoicesData);
+      
+      console.log(`Loaded ${ordersData.length} orders and ${invoicesData.length} invoices`);
+    } catch (error) {
+      console.error("Error fetching user data:", error);
+      toast({
+        title: "Error",
+        description: "Failed to load your data. Please refresh the page.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const fetchUserData = async () => {
-      if (!userData?.uid) return;
-
-      try {
-        setLoading(true);
-        
-        const ordersData = await getUserOrders(userData.uid);
-        console.log("Fetched orders:", ordersData);
-        
-        const typedOrders = ordersData.map(order => ({
-          ...order,
-          status: (order.status || "pending_payment") as "pending_payment" | "received" | "processing" | "printed" | "shipped",
-          timestamp: order.timestamp || new Date()
-        }));
-        
-        setOrders(typedOrders);
-
-        const invoicesQuery = query(
-          collection(db, "invoices"),
-          where("userId", "==", userData.uid)
-        );
-        const invoicesSnapshot = await getDocs(invoicesQuery);
-        const invoicesData = invoicesSnapshot.docs.map(doc => ({
-          id: doc.id,
-          ...doc.data()
-        })) as Invoice[];
-        setInvoices(invoicesData);
-        
-        console.log(`Loaded ${ordersData.length} orders and ${invoicesData.length} invoices`);
-      } catch (error) {
-        console.error("Error fetching user data:", error);
-        toast({
-          title: "Error",
-          description: "Failed to load your data. Please refresh the page.",
-          variant: "destructive",
-        });
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchUserData();
+    fetchUserOrders();
   }, [userData, toast]);
 
   const getStatusColor = (status: string) => {
@@ -165,14 +174,92 @@ export default function Dashboard() {
     return invoices.find(invoice => invoice.orderId === orderId);
   };
 
-  const handleRetryPayment = (order: Order) => {
-    toast({
-      title: "Payment Retry",
-      description: "Payment retry functionality will be implemented soon.",
-    });
+  const handleRetryPayment = async (order: Order) => {
+    if (!userData || processingPayment) return;
     
-    // In a real implementation, you would redirect to a payment page
-    // or open a payment modal for this specific order
+    try {
+      setProcessingPayment(true);
+      
+      toast({
+        title: "Processing Payment",
+        description: "Please wait while we initialize the payment...",
+      });
+      
+      await initializeRazorpay();
+      
+      const razorpayOrderData = await createRazorpayOrder(
+        order.id,
+        order.totalAmount,
+        userData.name || order.customerName || "Customer",
+        userData.email || order.customerEmail || ""
+      );
+      
+      const paymentResult = await processPayment({
+        orderId: order.id,
+        razorpayOrderId: razorpayOrderData.id,
+        amount: order.totalAmount,
+        currency: 'INR',
+        customerName: userData.name || order.customerName || "Customer",
+        customerEmail: userData.email || order.customerEmail || "",
+        description: `Order #${order.id.substring(0, 8)} - ${order.productType} (${order.quantity} qty)`,
+        userId: userData.uid,
+        productType: order.productType,
+        quantity: order.quantity,
+        deliveryAddress: order.deliveryAddress || "",
+        orderData: {
+          ...order,
+          userId: userData.uid,
+          customerName: userData.name || order.customerName,
+          customerEmail: userData.email || order.customerEmail,
+          status: "received"
+        }
+      });
+      
+      if (paymentResult.status === 'completed') {
+        toast({
+          title: "Payment Successful",
+          description: "Your payment has been successfully processed.",
+        });
+        
+        setOrders(prevOrders => 
+          prevOrders.map(o => 
+            o.id === order.id 
+              ? { 
+                  ...o, 
+                  status: "received",
+                  paymentStatus: "paid", 
+                  paymentDetails: {
+                    id: paymentResult.id,
+                    paymentId: paymentResult.paymentId,
+                    method: paymentResult.method,
+                    status: "completed",
+                    timestamp: paymentResult.timestamp
+                  }
+                }
+              : o
+          )
+        );
+        
+        fetchUserOrders();
+      } else {
+        toast({
+          title: "Payment Failed",
+          description: "There was an issue processing your payment. Please try again.",
+          variant: "destructive",
+        });
+        fetchUserOrders();
+      }
+    } catch (error) {
+      console.error("Payment retry error:", error);
+      toast({
+        title: "Payment Error",
+        description: "An unexpected error occurred. Please try again later.",
+        variant: "destructive",
+      });
+      fetchUserOrders();
+    } finally {
+      setProcessingPayment(false);
+    }
   };
 
   const handleUpdateProfile = async (e: React.FormEvent) => {
@@ -294,6 +381,21 @@ export default function Dashboard() {
     }
   };
 
+  const getPendingOrders = () => {
+    return orders.filter(order => 
+      order.status === "pending_payment" || 
+      (order.paymentStatus === "failed" || order.paymentStatus === "pending")
+    );
+  };
+
+  const getCompletedOrders = () => {
+    return orders.filter(order => 
+      order.status !== "pending_payment" && 
+      order.paymentStatus !== "failed" &&
+      order.paymentStatus !== "pending"
+    );
+  };
+
   return (
     <div className="container-custom py-12">
       <h1 className="text-3xl font-bold mb-2">Dashboard</h1>
@@ -308,7 +410,7 @@ export default function Dashboard() {
           <CardContent>
             <div className="flex items-center">
               <ShoppingBag className="h-8 w-8 text-primary mr-3" />
-              <span className="text-3xl font-bold">{orders.length}</span>
+              <span className="text-3xl font-bold">{getCompletedOrders().length}</span>
             </div>
           </CardContent>
         </Card>
@@ -316,13 +418,13 @@ export default function Dashboard() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-lg font-medium">Pending Orders</CardTitle>
-            <CardDescription>Orders in progress</CardDescription>
+            <CardDescription>Orders needing payment</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="flex items-center">
               <Clock className="h-8 w-8 text-primary mr-3" />
               <span className="text-3xl font-bold">
-                {orders.filter(order => order.status !== "shipped").length}
+                {getPendingOrders().length}
               </span>
             </div>
           </CardContent>
@@ -347,6 +449,9 @@ export default function Dashboard() {
           <TabsTrigger value="orders" className="text-base">
             <ShoppingBag className="h-4 w-4 mr-2" /> Orders
           </TabsTrigger>
+          <TabsTrigger value="pending" className="text-base">
+            <CreditCard className="h-4 w-4 mr-2" /> Pending Payments
+          </TabsTrigger>
           <TabsTrigger value="invoices" className="text-base">
             <FileText className="h-4 w-4 mr-2" /> Invoices
           </TabsTrigger>
@@ -370,7 +475,7 @@ export default function Dashboard() {
                 <div className="flex justify-center p-6">
                   <div className="animate-spin rounded-full h-12 w-12 border-t-4 border-primary border-solid"></div>
                 </div>
-              ) : orders.length > 0 ? (
+              ) : getCompletedOrders().length > 0 ? (
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead>
@@ -382,11 +487,10 @@ export default function Dashboard() {
                         <th className="text-left py-3 px-4 font-medium">Status</th>
                         <th className="text-left py-3 px-4 font-medium">Amount</th>
                         <th className="text-left py-3 px-4 font-medium">Invoice</th>
-                        <th className="text-left py-3 px-4 font-medium">Actions</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {orders
+                      {getCompletedOrders()
                         .sort((a, b) => {
                           if (!a.timestamp || !b.timestamp) return 0;
                           if (typeof a.timestamp === 'object' && a.timestamp.toMillis) {
@@ -398,7 +502,6 @@ export default function Dashboard() {
                         })
                         .map((order) => {
                           const orderInvoice = findInvoiceForOrder(order.id);
-                          const paymentFailed = order.paymentStatus === "failed";
                           
                           return (
                             <tr key={order.id} className="border-b hover:bg-gray-50">
@@ -423,14 +526,9 @@ export default function Dashboard() {
                                 <div className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(order.status)}`}>
                                   {getStatusIcon(order.status)}
                                   <span className="ml-1 capitalize">
-                                    {order.status === "pending_payment" ? "Payment Pending" : order.status}
+                                    {order.status.replace('_', ' ')}
                                   </span>
                                 </div>
-                                {paymentFailed && (
-                                  <div className="mt-1 text-xs text-red-600">
-                                    Payment failed
-                                  </div>
-                                )}
                               </td>
                               <td className="py-3 px-4">{formatCurrency(order.totalAmount)}</td>
                               <td className="py-3 px-4">
@@ -448,19 +546,6 @@ export default function Dashboard() {
                                   <span className="text-gray-400">-</span>
                                 )}
                               </td>
-                              <td className="py-3 px-4">
-                                {(order.status === "pending_payment" || paymentFailed) && (
-                                  <Button 
-                                    size="sm" 
-                                    variant="outline" 
-                                    onClick={() => handleRetryPayment(order)}
-                                    className="text-xs"
-                                  >
-                                    <CreditCard className="h-3 w-3 mr-1" />
-                                    Retry Payment
-                                  </Button>
-                                )}
-                              </td>
                             </tr>
                           );
                         })}
@@ -472,6 +557,107 @@ export default function Dashboard() {
                   <p className="text-gray-500 mb-4">You haven't placed any orders yet.</p>
                   <Link to="/order">
                     <Button>Place Your First Order</Button>
+                  </Link>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="pending">
+          <Card>
+            <CardHeader>
+              <div className="flex justify-between items-center">
+                <CardTitle>Pending Payments</CardTitle>
+                <Link to="/order">
+                  <Button>New Order</Button>
+                </Link>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {loading ? (
+                <div className="flex justify-center p-6">
+                  <div className="animate-spin rounded-full h-12 w-12 border-t-4 border-primary border-solid"></div>
+                </div>
+              ) : getPendingOrders().length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b">
+                        <th className="text-left py-3 px-4 font-medium">Order ID</th>
+                        <th className="text-left py-3 px-4 font-medium">Product</th>
+                        <th className="text-left py-3 px-4 font-medium">Quantity</th>
+                        <th className="text-left py-3 px-4 font-medium">Date</th>
+                        <th className="text-left py-3 px-4 font-medium">Amount</th>
+                        <th className="text-left py-3 px-4 font-medium">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {getPendingOrders()
+                        .sort((a, b) => {
+                          if (!a.timestamp || !b.timestamp) return 0;
+                          if (typeof a.timestamp === 'object' && a.timestamp.toMillis) {
+                            return b.timestamp.toMillis() - a.timestamp.toMillis();
+                          }
+                          const aTime = a.timestamp instanceof Date ? a.timestamp.getTime() : 0;
+                          const bTime = b.timestamp instanceof Date ? b.timestamp.getTime() : 0;
+                          return bTime - aTime;
+                        })
+                        .map((order) => {
+                          const paymentFailed = order.paymentStatus === "failed";
+                          
+                          return (
+                            <tr key={order.id} className="border-b hover:bg-gray-50">
+                              <td className="py-3 px-4 font-mono text-sm">
+                                {order.id.length > 10 ? order.id.substring(0, 10) + '...' : order.id}
+                                {order.trackingId && (
+                                  <div className="text-xs text-gray-500 mt-1">
+                                    {order.trackingId}
+                                  </div>
+                                )}
+                              </td>
+                              <td className="py-3 px-4">{order.productType}</td>
+                              <td className="py-3 px-4">{order.quantity}</td>
+                              <td className="py-3 px-4">
+                                {order.timestamp ? (
+                                  typeof order.timestamp === 'object' && order.timestamp.toDate 
+                                    ? formatDate(order.timestamp.toDate()) 
+                                    : formatDate(order.timestamp)
+                                ) : "N/A"}
+                              </td>
+                              <td className="py-3 px-4">{formatCurrency(order.totalAmount)}</td>
+                              <td className="py-3 px-4">
+                                <Button 
+                                  size="sm" 
+                                  variant="default" 
+                                  onClick={() => handleRetryPayment(order)}
+                                  disabled={processingPayment}
+                                  className="text-xs"
+                                >
+                                  {processingPayment ? (
+                                    <>
+                                      <div className="mr-2 h-3 w-3 animate-spin rounded-full border-t-2 border-white"></div>
+                                      Processing...
+                                    </>
+                                  ) : (
+                                    <>
+                                      <CreditCard className="h-3 w-3 mr-1" />
+                                      {paymentFailed ? "Retry Payment" : "Complete Payment"}
+                                    </>
+                                  )}
+                                </Button>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <p className="text-gray-500 mb-4">You don't have any pending payments.</p>
+                  <Link to="/order">
+                    <Button>Place New Order</Button>
                   </Link>
                 </div>
               )}
