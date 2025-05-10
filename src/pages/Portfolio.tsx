@@ -1,10 +1,5 @@
+
 import { useEffect, useState } from "react";
-import medicineBoxes from '../assets/medicinebox.jpg';
-import manual from "../assets/manual.jpg";
-import productPackaging from "../assets/productPackaging.jpg";
-import shippingLogistics from "../assets/shippingLogistics.jpg"; // Fixed casing
-import premiumStickers from "../assets/premiumStickers.jpg"; // Fixed casing
-import foodPackaging from "../assets/foodPackaging.jpg"; // Fixed casing
 
 // Sample portfolio data
 const portfolioItems = [
@@ -15,7 +10,7 @@ const portfolioItems = [
     type: "boxes",
     client: "Leading Pharmaceutical Company",
     description: "Custom designed medicine boxes with anti-counterfeiting features and vibrant UV printing for brand recognition.",
-    image: medicineBoxes
+    image: "/placeholder.svg"
   },
   {
     id: 2,
@@ -24,7 +19,7 @@ const portfolioItems = [
     type: "labels",
     client: "Auto Components Manufacturer",
     description: "Durable, weather-resistant labels for automobile parts with scannable QR codes for inventory tracking.",
-    image: manual
+    image: "/placeholder.svg"
   },
   {
     id: 3,
@@ -33,7 +28,7 @@ const portfolioItems = [
     type: "boxes",
     client: "Electronics Manufacturer",
     description: "Innovative packaging solution for consumer electronics with premium finish and multi-color UV printing.",
-    image: productPackaging
+    image: "/placeholder.svg"
   },
   {
     id: 4,
@@ -42,7 +37,7 @@ const portfolioItems = [
     type: "stickers",
     client: "Retail Chain",
     description: "High-quality promotional stickers with special effects UV printing for retail marketing campaign.",
-    image: premiumStickers
+    image: "/placeholder.svg"
   },
   {
     id: 5,
@@ -51,7 +46,7 @@ const portfolioItems = [
     type: "labels",
     client: "Logistics Service Provider",
     description: "Weather-resistant shipping labels with barcode integration for nationwide logistics operations.",
-    image: shippingLogistics
+    image: "/placeholder.svg"
   },
   {
     id: 6,
@@ -60,7 +55,7 @@ const portfolioItems = [
     type: "boxes",
     client: "Food Processing Company",
     description: "Food-grade packaging with vibrant colors and protective coatings for extended shelf life.",
-    image: foodPackaging
+    image: "/placeholder.svg"
   }
 ];
 

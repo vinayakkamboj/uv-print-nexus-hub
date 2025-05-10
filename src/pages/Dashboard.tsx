@@ -144,17 +144,6 @@ export default function Dashboard() {
     initializeRazorpay().catch(error => {
       console.error("Error initializing Razorpay:", error);
     });
-    
-    // Add polling to refresh orders periodically (every 15 seconds)
-    const refreshInterval = setInterval(() => {
-      if (userData?.uid) {
-        fetchUserOrders();
-      }
-    }, 15000); // Refresh every 15 seconds
-    
-    return () => {
-      clearInterval(refreshInterval);
-    };
   }, [userData]);
 
   const isPendingOrder = useCallback((order: Order) => {
@@ -167,34 +156,26 @@ export default function Dashboard() {
   const updateOrderAfterPayment = useCallback(async (orderId: string, paymentSuccess: boolean) => {
     try {
       const orderRef = doc(db, "orders", orderId);
-      
-      // Use a more robust update object
-      const updateData = {
-        status: paymentSuccess ? "received" : "pending_payment", // Consistently use "received" for completed orders
+      await updateDoc(orderRef, {
+        status: paymentSuccess ? "received" : "pending_payment",
         paymentStatus: paymentSuccess ? "paid" : "failed",
         updatedAt: new Date()
-      };
-      
-      console.log(`Updating order ${orderId} with data:`, updateData);
-      
-      await updateDoc(orderRef, updateData);
+      });
       
       console.log(`Updated order ${orderId} status in Firebase: ${paymentSuccess ? "received/paid" : "pending/failed"}`);
       
-      // Immediately update the local order state to reflect the new status
       setOrders(prevOrders => 
         prevOrders.map(order => 
           order.id === orderId
             ? {
                 ...order,
-                status: paymentSuccess ? "received" : "pending_payment", 
+                status: paymentSuccess ? "received" : "pending_payment",
                 paymentStatus: paymentSuccess ? "paid" : "failed"
               }
             : order
         )
       );
       
-      // Force a refetch to ensure we have the latest data
       fetchUserOrders();
       
       if (paymentSuccess) {
@@ -286,26 +267,12 @@ export default function Dashboard() {
           userId: userData.uid,
           customerName: userData.name || order.customerName,
           customerEmail: userData.email || order.customerEmail,
-          status: "received", // Consistently use "received" for completed orders
+          status: "received",
           paymentStatus: "paid"
         }
       });
       
       console.log("Payment result received:", paymentResult);
-      
-      // Ensure the paymentResult status is correctly set
-      if (paymentResult) {
-        // Force the status to be completed for successful payments
-        if (paymentResult.status === 'completed' || paymentResult.paymentStatus === 'paid') {
-          paymentResult.status = 'completed';
-          paymentResult.paymentStatus = 'paid';
-          
-          if (paymentResult.orderData) {
-            paymentResult.orderData.status = "received";
-            paymentResult.orderData.paymentStatus = "paid";
-          }
-        }
-      }
       
       if (paymentResult.status === 'completed') {
         await updateOrderAfterPayment(order.id, true);
@@ -317,7 +284,6 @@ export default function Dashboard() {
           description: "Your payment has been processed successfully. The order has moved to 'My Orders'.",
         });
         
-        // Ensure we refresh the data to show the updated order status
         setTimeout(() => {
           fetchUserOrders();
         }, 2000);

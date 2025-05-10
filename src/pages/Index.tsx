@@ -8,7 +8,6 @@ import tags from '../assets/tags.jpg';
 import medicineBoxes from '../assets/medicinebox.jpg';
 import digital from '../assets/digital.jpg';
 import { motion } from "framer-motion";
-import printing from "../assets/printing.jpg";
 import { useEffect } from "react";
 
 export default function Index() {
@@ -275,7 +274,7 @@ export default function Index() {
             </div>
             <div className="hidden md:block">
               <img 
-                src={printing}
+                src="/contact-image.jpg" 
                 alt="Contact Micro UV Printers" 
                 className="rounded-lg shadow-md"
               />
