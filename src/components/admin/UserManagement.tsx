@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -23,6 +22,13 @@ interface UserData {
   lastLogin?: any;
   totalOrders?: number;
   totalSpent?: number;
+}
+
+interface OrderData {
+  id: string;
+  userId?: string;
+  totalAmount?: number;
+  [key: string]: any;
 }
 
 const UserManagement = () => {
@@ -54,7 +60,10 @@ const UserManagement = () => {
 
       // Fetch order stats for each user
       const ordersSnapshot = await getDocs(collection(db, "orders"));
-      const orders = ordersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      const orders: OrderData[] = ordersSnapshot.docs.map(doc => ({ 
+        id: doc.id, 
+        ...doc.data() 
+      }));
 
       const usersWithStats = usersData.map(user => {
         const userOrders = orders.filter(order => order.userId === user.uid);

@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -29,6 +28,22 @@ interface PaymentData {
   refundReason?: string;
 }
 
+interface OrderData {
+  id: string;
+  paymentDetails?: {
+    id?: string;
+    method?: string;
+    paymentId?: string;
+  };
+  userId?: string;
+  customerName?: string;
+  customerEmail?: string;
+  totalAmount?: number;
+  paymentStatus?: string;
+  timestamp?: any;
+  [key: string]: any;
+}
+
 const PaymentManagement = () => {
   const [payments, setPayments] = useState<PaymentData[]>([]);
   const [filteredPayments, setFilteredPayments] = useState<PaymentData[]>([]);
@@ -56,15 +71,15 @@ const PaymentManagement = () => {
       const paymentsData: PaymentData[] = [];
       
       ordersSnapshot.docs.forEach(doc => {
-        const order = { id: doc.id, ...doc.data() };
+        const order: OrderData = { id: doc.id, ...doc.data() };
         
         if (order.paymentDetails) {
           paymentsData.push({
             id: order.paymentDetails.id || doc.id,
             orderId: order.id,
-            userId: order.userId,
-            customerName: order.customerName,
-            customerEmail: order.customerEmail,
+            userId: order.userId || '',
+            customerName: order.customerName || '',
+            customerEmail: order.customerEmail || '',
             amount: order.totalAmount || 0,
             currency: 'INR',
             status: order.paymentStatus || 'pending',
@@ -77,9 +92,9 @@ const PaymentManagement = () => {
           paymentsData.push({
             id: doc.id,
             orderId: order.id,
-            userId: order.userId,
-            customerName: order.customerName,
-            customerEmail: order.customerEmail,
+            userId: order.userId || '',
+            customerName: order.customerName || '',
+            customerEmail: order.customerEmail || '',
             amount: order.totalAmount || 0,
             currency: 'INR',
             status: order.paymentStatus || 'pending',

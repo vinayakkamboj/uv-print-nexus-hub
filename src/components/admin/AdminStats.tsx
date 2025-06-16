@@ -1,10 +1,21 @@
-
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Package, Users, DollarSign, TrendingUp, Clock, CheckCircle, AlertCircle, XCircle } from "lucide-react";
 import { collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+
+interface OrderData {
+  id: string;
+  totalAmount?: number;
+  status?: string;
+  [key: string]: any;
+}
+
+interface UserData {
+  id: string;
+  [key: string]: any;
+}
 
 const AdminStats = () => {
   const [stats, setStats] = useState({
@@ -22,11 +33,17 @@ const AdminStats = () => {
       try {
         // Fetch orders
         const ordersSnapshot = await getDocs(collection(db, "orders"));
-        const orders = ordersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const orders: OrderData[] = ordersSnapshot.docs.map(doc => ({ 
+          id: doc.id, 
+          ...doc.data() 
+        }));
         
         // Fetch users
         const usersSnapshot = await getDocs(collection(db, "users"));
-        const users = usersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const users: UserData[] = usersSnapshot.docs.map(doc => ({ 
+          id: doc.id, 
+          ...doc.data() 
+        }));
         
         // Calculate stats
         const totalRevenue = orders.reduce((sum, order) => sum + (order.totalAmount || 0), 0);
