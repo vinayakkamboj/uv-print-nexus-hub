@@ -29,6 +29,7 @@ import { createOrder, updateOrderAfterPayment, createAndSendInvoice, SimpleOrder
 import { checkForRecentDuplicateOrder } from "@/lib/order-service";
 import { initializeRazorpay, createRazorpayOrder, processPayment } from "@/lib/payment-service";
 import { Progress } from "@/components/ui/progress";
+import { Timestamp } from "firebase/firestore";
 
 const productTypes = [
   { value: "sticker", label: "Stickers & Labels" },
@@ -271,10 +272,15 @@ export default function Order() {
       setProcessingStep("Order created successfully. Processing payment...");
       
       // Process payment immediately
-      await handlePaymentProcess(orderResult.orderId, {
+      const completeOrderData: SimpleOrderData = {
+        id: orderResult.orderId,
         ...orderData,
-        id: orderResult.orderId
-      });
+        status: 'pending_payment',
+        paymentStatus: 'pending',
+        timestamp: Timestamp.now()
+      };
+      
+      await handlePaymentProcess(orderResult.orderId, completeOrderData);
       
     } catch (error) {
       console.error("Error placing order:", error);

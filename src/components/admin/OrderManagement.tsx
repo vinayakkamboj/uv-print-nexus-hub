@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -13,16 +12,16 @@ import { useToast } from "@/hooks/use-toast";
 import { Search, Edit, Eye, Package, Truck, CheckCircle, AlertCircle, XCircle, Download } from "lucide-react";
 import { collection, getDocs, doc, updateDoc, deleteDoc, orderBy, query } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { OrderData } from "@/lib/invoice-service";
+import { SimpleOrderData } from "@/lib/invoice-service";
 
 const OrderManagement = () => {
-  const [orders, setOrders] = useState<OrderData[]>([]);
-  const [filteredOrders, setFilteredOrders] = useState<OrderData[]>([]);
+  const [orders, setOrders] = useState<SimpleOrderData[]>([]);
+  const [filteredOrders, setFilteredOrders] = useState<SimpleOrderData[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [selectedOrder, setSelectedOrder] = useState<OrderData | null>(null);
-  const [editingOrder, setEditingOrder] = useState<OrderData | null>(null);
+  const [selectedOrder, setSelectedOrder] = useState<SimpleOrderData | null>(null);
+  const [editingOrder, setEditingOrder] = useState<SimpleOrderData | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -41,7 +40,7 @@ const OrderManagement = () => {
       const ordersData = ordersSnapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
-      })) as OrderData[];
+      })) as SimpleOrderData[];
       
       setOrders(ordersData);
     } catch (error) {
@@ -64,7 +63,7 @@ const OrderManagement = () => {
         order.customerName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         order.customerEmail?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         order.trackingId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        order.id.toLowerCase().includes(searchTerm.toLowerCase())
+        order.id?.toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
 
@@ -241,7 +240,7 @@ const OrderManagement = () => {
               {filteredOrders.map((order) => (
                 <TableRow key={order.id}>
                   <TableCell className="font-mono text-sm">
-                    {order.id.substring(0, 8)}...
+                    {order.id?.substring(0, 8)}...
                   </TableCell>
                   <TableCell>
                     <div>
@@ -328,7 +327,7 @@ const OrderManagement = () => {
                               <div className="flex gap-4 pt-4">
                                 <Select
                                   value={selectedOrder.status}
-                                  onValueChange={(value) => updateOrderStatus(selectedOrder.id, value)}
+                                  onValueChange={(value) => updateOrderStatus(selectedOrder.id!, value)}
                                 >
                                   <SelectTrigger className="w-[200px]">
                                     <SelectValue />
@@ -345,7 +344,7 @@ const OrderManagement = () => {
                                 </Select>
                                 <Select
                                   value={selectedOrder.paymentStatus}
-                                  onValueChange={(value) => updateOrderStatus(selectedOrder.id, selectedOrder.status || 'pending', value)}
+                                  onValueChange={(value) => updateOrderStatus(selectedOrder.id!, selectedOrder.status || 'pending', value)}
                                 >
                                   <SelectTrigger className="w-[200px]">
                                     <SelectValue />
@@ -366,7 +365,7 @@ const OrderManagement = () => {
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => deleteOrder(order.id)}
+                        onClick={() => deleteOrder(order.id!)}
                         className="text-red-600 hover:text-red-800"
                       >
                         <XCircle className="h-4 w-4" />
