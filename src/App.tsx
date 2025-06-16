@@ -24,6 +24,7 @@ import Billing from "./pages/Billing";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import Dashboard from "./pages/Dashboard";
+import Admin from "./pages/Admin";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -83,6 +84,9 @@ const App = () => {
                       </ProtectedRoute>
                     } 
                   />
+                  
+                  {/* Admin Route - Hidden from navigation */}
+                  <Route path="/admin" element={<Admin />} />
                   
                   {/* Catch-all route */}
                   <Route path="*" element={<NotFound />} />
