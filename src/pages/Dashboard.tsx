@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -12,7 +13,7 @@ import { Label } from "@/components/ui/label";
 import { formatDate, formatCurrency, isValidGSTIN } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { ShoppingBag, FileText, Settings, Clock, Package, CheckCircle, Truck, CreditCard, Download, AlertCircle } from "lucide-react";
-import { getUserOrders } from "@/lib/invoice-service";
+import { getUserOrders, OrderData } from "@/lib/invoice-service";
 import { initializeRazorpay, createRazorpayOrder, processPayment } from "@/lib/payment-service";
 
 interface Order {
@@ -100,11 +101,14 @@ export default function Dashboard() {
       const ordersData = await getUserOrders(userData.uid);
       console.log("Fetched orders:", ordersData);
       
-      const typedOrders = ordersData.map(order => ({
-        ...order,
-        status: (order.status || "pending_payment") as "pending_payment" | "received" | "processing" | "printed" | "shipped",
-        timestamp: order.timestamp || new Date()
-      }));
+      // Filter out orders without id and ensure proper typing
+      const typedOrders = ordersData
+        .filter((order): order is OrderData & { id: string } => !!order.id)
+        .map(order => ({
+          ...order,
+          status: (order.status || "pending_payment") as "pending_payment" | "received" | "processing" | "printed" | "shipped",
+          timestamp: order.timestamp || new Date()
+        }));
       
       setOrders(typedOrders);
 
