@@ -21,8 +21,15 @@ const Admin = () => {
   const { user, userData } = useAuth();
   const { toast } = useToast();
   
-  // Check if user is admin (you can customize this logic)
-  const isAdmin = user?.email === "admin@microuvprinters.com" || userData?.email === "admin@microuvprinters.com";
+  // Check if user is admin - updated with new admin emails
+  const adminEmails = [
+    "admin@microuvprinters.com",
+    "vinayakkamboj01@gmail.com", 
+    "laxmankamboj@gmail.com"
+  ];
+  
+  const isAdmin = user?.email && adminEmails.includes(user.email) || 
+                  userData?.email && adminEmails.includes(userData.email);
   
   if (!user || !isAdmin) {
     return <Navigate to="/login" replace />;
