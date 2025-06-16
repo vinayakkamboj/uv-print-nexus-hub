@@ -1,11 +1,11 @@
 
 import { db } from './firebase';
-import { collection, addDoc, doc, updateDoc, getDoc, query, where, getDocs, orderBy, Timestamp } from 'firebase/firestore';
+import { collection, addDoc, doc, updateDoc, getDoc, Timestamp } from 'firebase/firestore';
 import { generateInvoicePDF } from './invoice-generator';
 import { sendInvoiceEmail } from './email-service';
 import { PaymentDetails } from './payment-service';
 
-export interface OrderData {
+export interface SimpleOrderData {
   id?: string;
   userId: string;
   productType: string;
@@ -19,38 +19,36 @@ export interface OrderData {
   customerName: string;
   customerEmail: string;
   hsnCode: string;
-  trackingId?: string;
-  status?: string;
-  paymentStatus?: string;
-  timestamp?: any;
-  paymentDetails?: PaymentDetails;
+  trackingId: string;
+  status: 'pending_payment' | 'received' | 'processing' | 'printed' | 'shipped';
+  paymentStatus: 'pending' | 'paid' | 'failed';
+  timestamp: any;
+  razorpayPaymentId?: string;
+  paymentCompletedAt?: any;
   invoiceId?: string;
-  [key: string]: any;
+  lastUpdated?: any;
 }
 
-export const createOrder = async (orderData: Omit<OrderData, 'id'>): Promise<{ success: boolean; orderId?: string; trackingId?: string; message?: string }> => {
+export const createOrder = async (orderData: Omit<SimpleOrderData, 'id' | 'status' | 'paymentStatus' | 'timestamp' | 'lastUpdated'>): Promise<{ success: boolean; orderId?: string; message?: string }> => {
   try {
     console.log("Creating order with data:", orderData);
     
-    // Add timestamp and initial status
-    const orderWithDefaults = {
+    // Create order with default pending payment status
+    const orderWithDefaults: Omit<SimpleOrderData, 'id'> = {
       ...orderData,
-      timestamp: Timestamp.now(),
       status: 'pending_payment',
       paymentStatus: 'pending',
-      createdAt: new Date(),
-      lastUpdated: new Date()
+      timestamp: Timestamp.now(),
+      lastUpdated: Timestamp.now()
     };
 
-    // Create the order document
     const docRef = await addDoc(collection(db, 'orders'), orderWithDefaults);
     
     console.log("Order created successfully with ID:", docRef.id);
     
     return {
       success: true,
-      orderId: docRef.id,
-      trackingId: orderData.trackingId
+      orderId: docRef.id
     };
     
   } catch (error) {
@@ -62,11 +60,10 @@ export const createOrder = async (orderData: Omit<OrderData, 'id'>): Promise<{ s
   }
 };
 
-export const updateOrderAfterPayment = async (orderId: string, paymentDetails: PaymentDetails): Promise<{ success: boolean; message?: string }> => {
+export const updateOrderAfterPayment = async (orderId: string, razorpayPaymentId: string): Promise<{ success: boolean; message?: string }> => {
   try {
-    console.log("Updating order after payment:", orderId, paymentDetails);
+    console.log("Updating order after successful payment:", orderId, razorpayPaymentId);
     
-    // Check if order exists
     const orderRef = doc(db, 'orders', orderId);
     const orderDoc = await getDoc(orderRef);
     
@@ -75,23 +72,16 @@ export const updateOrderAfterPayment = async (orderId: string, paymentDetails: P
       return { success: false, message: "Order not found" };
     }
     
-    // Update the existing order with payment details
-    const updateData = {
-      paymentDetails: {
-        id: paymentDetails.id,
-        paymentId: paymentDetails.paymentId,
-        method: paymentDetails.method,
-        timestamp: paymentDetails.timestamp
-      },
-      paymentStatus: paymentDetails.status === 'completed' ? 'paid' : paymentDetails.status,
-      status: paymentDetails.status === 'completed' ? 'received' : 'pending_payment',
-      lastUpdated: new Date()
-    };
-    
-    await updateDoc(orderRef, updateData);
+    // Update order with payment success
+    await updateDoc(orderRef, {
+      status: 'received',
+      paymentStatus: 'paid',
+      razorpayPaymentId: razorpayPaymentId,
+      paymentCompletedAt: Timestamp.now(),
+      lastUpdated: Timestamp.now()
+    });
     
     console.log("Order updated successfully after payment");
-    
     return { success: true };
     
   } catch (error) {
@@ -100,14 +90,14 @@ export const updateOrderAfterPayment = async (orderId: string, paymentDetails: P
   }
 };
 
-export const createAndSendInvoice = async (orderData: OrderData, paymentDetails: PaymentDetails): Promise<{ success: boolean; invoiceId?: string; pdfBlob?: Blob; pdfUrl?: string; message?: string }> => {
+export const createAndSendInvoice = async (orderData: SimpleOrderData): Promise<{ success: boolean; invoiceId?: string; message?: string }> => {
   try {
     console.log("Creating and sending invoice for order:", orderData.id);
     
     // Generate invoice ID
-    const invoiceId = `INV-${orderData.trackingId || orderData.id?.substring(0, 8)}-${Date.now().toString().slice(-4)}`;
+    const invoiceId = `INV-${orderData.trackingId}-${Date.now().toString().slice(-4)}`;
     
-    // Create invoice data that matches the InvoiceData interface
+    // Create invoice data
     const invoiceData = {
       invoiceId,
       orderId: orderData.id || '',
@@ -132,7 +122,6 @@ export const createAndSendInvoice = async (orderData: OrderData, paymentDetails:
       pdfResult = await generateInvoicePDF(invoiceData);
     } catch (pdfError) {
       console.error("Error generating PDF:", pdfError);
-      // Create fallback PDF
       const fallbackBlob = new Blob(['Invoice content placeholder'], { type: 'application/pdf' });
       const fallbackUrl = URL.createObjectURL(fallbackBlob);
       pdfResult = { blob: fallbackBlob, url: fallbackUrl };
@@ -143,26 +132,23 @@ export const createAndSendInvoice = async (orderData: OrderData, paymentDetails:
       try {
         await updateDoc(doc(db, 'orders', orderData.id), {
           invoiceId,
-          lastUpdated: new Date()
+          lastUpdated: Timestamp.now()
         });
       } catch (updateError) {
         console.error("Error updating order with invoice ID:", updateError);
       }
     }
     
-    // Send email (non-blocking) - pass the complete invoiceData object as first parameter
+    // Send email
     try {
       await sendInvoiceEmail(invoiceData, pdfResult.blob);
     } catch (emailError) {
       console.error("Error sending invoice email:", emailError);
-      // Don't fail the whole process if email fails
     }
     
     return {
       success: true,
-      invoiceId,
-      pdfBlob: pdfResult.blob,
-      pdfUrl: pdfResult.url
+      invoiceId
     };
     
   } catch (error) {
@@ -174,24 +160,16 @@ export const createAndSendInvoice = async (orderData: OrderData, paymentDetails:
   }
 };
 
-export const getUserOrders = async (userId: string): Promise<OrderData[]> => {
+export const getUserOrders = async (userId: string): Promise<SimpleOrderData[]> => {
   try {
     console.log("Fetching orders for user:", userId);
     
-    const ordersQuery = query(
-      collection(db, 'orders'),
-      where('userId', '==', userId),
-      orderBy('timestamp', 'desc')
-    );
-    
-    const ordersSnapshot = await getDocs(ordersQuery);
-    const orders = ordersSnapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data()
-    })) as OrderData[];
+    // Import the function from order-service to avoid duplication
+    const { getAllUserOrders } = await import('./order-service');
+    const orders = await getAllUserOrders(userId);
     
     console.log(`Found ${orders.length} orders for user ${userId}`);
-    return orders;
+    return orders as SimpleOrderData[];
     
   } catch (error) {
     console.error("Error fetching user orders:", error);

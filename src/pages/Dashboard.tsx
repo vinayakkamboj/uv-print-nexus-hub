@@ -1,9 +1,9 @@
 import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { collection, query, where, getDocs, doc, updateDoc, orderBy } from "firebase/firestore";
 import { updatePassword, reauthenticateWithCredential, EmailAuthProvider } from "firebase/auth";
-import { db, auth } from "@/lib/firebase";
+import { doc, updateDoc } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -12,48 +12,14 @@ import { Label } from "@/components/ui/label";
 import { formatDate, formatCurrency, isValidGSTIN } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { ShoppingBag, FileText, Settings, Clock, Package, CheckCircle, Truck, CreditCard, Download, AlertCircle } from "lucide-react";
-import { getUserOrders, OrderData } from "@/lib/invoice-service";
+import { getUserOrders, SimpleOrderData } from "@/lib/invoice-service";
 import { initializeRazorpay, createRazorpayOrder, processPayment } from "@/lib/payment-service";
-
-interface Order {
-  id: string;
-  productType: string;
-  quantity: number;
-  status: "pending_payment" | "received" | "processing" | "printed" | "shipped";
-  timestamp: any;
-  totalAmount: number;
-  paymentDetails?: {
-    id: string;
-    paymentId?: string;
-    method?: string;
-    status: string;
-    timestamp: any;
-  };
-  paymentStatus?: string;
-  trackingId?: string;
-  userId?: string;
-  customerName?: string;
-  customerEmail?: string;
-  deliveryAddress?: string;
-}
-
-interface Invoice {
-  id: string;
-  invoiceId?: string;
-  orderId: string;
-  createdAt: any;
-  totalAmount: number;
-  pdfUrl: string;
-  paymentId?: string;
-  paymentMethod?: string;
-  userId?: string;
-}
+import { updateOrderAfterPayment } from "@/lib/invoice-service";
 
 export default function Dashboard() {
   const { userData, user, updateUserProfile } = useAuth();
   const { toast } = useToast();
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [orders, setOrders] = useState<SimpleOrderData[]>([]);
   const [loading, setLoading] = useState(true);
   const [processingPayment, setProcessingPayment] = useState(false);
   const navigate = useNavigate();
@@ -76,52 +42,27 @@ export default function Dashboard() {
   }, [userData]);
 
   const fetchUserOrders = async () => {
-    if (!userData?.uid) return;
+    if (!userData?.uid) {
+      console.log("No user ID available, skipping order fetch");
+      setLoading(false);
+      return;
+    }
     
     try {
       setLoading(true);
+      console.log("Fetching orders for user:", userData.uid);
       
       const ordersData = await getUserOrders(userData.uid);
       console.log("Fetched orders:", ordersData);
       
-      // Convert OrderData to Order interface, filtering out orders without id
-      const typedOrders: Order[] = ordersData
-        .filter(order => !!order.id)
-        .map(order => ({
-          id: order.id!,
-          productType: order.productType,
-          quantity: order.quantity,
-          status: (order.status || "pending_payment") as "pending_payment" | "received" | "processing" | "printed" | "shipped",
-          timestamp: order.timestamp || new Date(),
-          totalAmount: order.totalAmount,
-          paymentDetails: order.paymentDetails,
-          paymentStatus: order.paymentStatus,
-          trackingId: order.trackingId,
-          userId: order.userId,
-          customerName: order.customerName,
-          customerEmail: order.customerEmail,
-          deliveryAddress: order.deliveryAddress
-        }));
+      setOrders(ordersData);
+      console.log(`Loaded ${ordersData.length} orders`);
       
-      setOrders(typedOrders);
-
-      const invoicesQuery = query(
-        collection(db, "invoices"),
-        where("userId", "==", userData.uid)
-      );
-      const invoicesSnapshot = await getDocs(invoicesQuery);
-      const invoicesData = invoicesSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as Invoice[];
-      setInvoices(invoicesData);
-      
-      console.log(`Loaded ${typedOrders.length} orders and ${invoicesData.length} invoices`);
     } catch (error) {
       console.error("Error fetching user data:", error);
       toast({
         title: "Error",
-        description: "Failed to load your data. Please refresh the page.",
+        description: "Failed to load your orders. Please refresh the page.",
         variant: "destructive",
       });
     } finally {
@@ -131,7 +72,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     fetchUserOrders();
-  }, [userData, toast]);
+  }, [userData]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -167,12 +108,8 @@ export default function Dashboard() {
     }
   };
 
-  const findInvoiceForOrder = (orderId: string) => {
-    return invoices.find(invoice => invoice.orderId === orderId);
-  };
-
-  const handleRetryPayment = async (order: Order) => {
-    if (!userData || processingPayment) return;
+  const handleRetryPayment = async (order: SimpleOrderData) => {
+    if (!userData || processingPayment || !order.id) return;
     
     try {
       setProcessingPayment(true);
@@ -187,8 +124,8 @@ export default function Dashboard() {
       const razorpayOrderData = await createRazorpayOrder(
         order.id,
         order.totalAmount,
-        userData.name || order.customerName || "Customer",
-        userData.email || order.customerEmail || ""
+        order.customerName,
+        order.customerEmail
       );
       
       const paymentResult = await processPayment({
@@ -196,47 +133,25 @@ export default function Dashboard() {
         razorpayOrderId: razorpayOrderData.id,
         amount: order.totalAmount,
         currency: 'INR',
-        customerName: userData.name || order.customerName || "Customer",
-        customerEmail: userData.email || order.customerEmail || "",
-        description: `Order #${order.id.substring(0, 8)} - ${order.productType} (${order.quantity} qty)`,
+        customerName: order.customerName,
+        customerEmail: order.customerEmail,
+        description: `Order #${order.trackingId} - ${order.productType} (${order.quantity} qty)`,
         userId: userData.uid,
         productType: order.productType,
         quantity: order.quantity,
-        deliveryAddress: order.deliveryAddress || "",
-        orderData: {
-          ...order,
-          userId: userData.uid,
-          customerName: userData.name || order.customerName,
-          customerEmail: userData.email || order.customerEmail,
-          status: "received"
-        }
+        deliveryAddress: order.deliveryAddress
       });
       
-      if (paymentResult.status === 'completed') {
+      if (paymentResult.status === 'completed' && paymentResult.paymentId) {
+        // Update order in database
+        await updateOrderAfterPayment(order.id, paymentResult.paymentId);
+        
         toast({
           title: "Payment Successful",
           description: "Your payment has been successfully processed.",
         });
         
-        setOrders(prevOrders => 
-          prevOrders.map(o => 
-            o.id === order.id 
-              ? { 
-                  ...o, 
-                  status: "received",
-                  paymentStatus: "paid", 
-                  paymentDetails: {
-                    id: paymentResult.id,
-                    paymentId: paymentResult.paymentId,
-                    method: paymentResult.method,
-                    status: "completed",
-                    timestamp: paymentResult.timestamp
-                  }
-                }
-              : o
-          )
-        );
-        
+        // Refresh orders
         fetchUserOrders();
       } else {
         toast({
@@ -244,7 +159,6 @@ export default function Dashboard() {
           description: "There was an issue processing your payment. Please try again.",
           variant: "destructive",
         });
-        fetchUserOrders();
       }
     } catch (error) {
       console.error("Payment retry error:", error);
@@ -253,7 +167,6 @@ export default function Dashboard() {
         description: "An unexpected error occurred. Please try again later.",
         variant: "destructive",
       });
-      fetchUserOrders();
     } finally {
       setProcessingPayment(false);
     }
@@ -342,7 +255,6 @@ export default function Dashboard() {
       );
       
       await reauthenticateWithCredential(user, credential);
-      
       await updatePassword(user, newPassword);
       
       setCurrentPassword("");
@@ -379,18 +291,11 @@ export default function Dashboard() {
   };
 
   const getPendingOrders = () => {
-    return orders.filter(order => 
-      order.status === "pending_payment" || 
-      (order.paymentStatus === "failed" || order.paymentStatus === "pending")
-    );
+    return orders.filter(order => order.paymentStatus === "pending");
   };
 
   const getCompletedOrders = () => {
-    return orders.filter(order => 
-      order.status !== "pending_payment" && 
-      order.paymentStatus !== "failed" &&
-      order.paymentStatus !== "pending"
-    );
+    return orders.filter(order => order.paymentStatus === "paid");
   };
 
   return (
@@ -407,7 +312,7 @@ export default function Dashboard() {
           <CardContent>
             <div className="flex items-center">
               <ShoppingBag className="h-8 w-8 text-primary mr-3" />
-              <span className="text-3xl font-bold">{getCompletedOrders().length}</span>
+              <span className="text-3xl font-bold">{orders.length}</span>
             </div>
           </CardContent>
         </Card>
@@ -429,13 +334,13 @@ export default function Dashboard() {
 
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-lg font-medium">Invoices</CardTitle>
-            <CardDescription>Total invoices generated</CardDescription>
+            <CardTitle className="text-lg font-medium">Completed Orders</CardTitle>
+            <CardDescription>Successfully paid orders</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="flex items-center">
-              <FileText className="h-8 w-8 text-primary mr-3" />
-              <span className="text-3xl font-bold">{invoices.length}</span>
+              <CheckCircle className="h-8 w-8 text-primary mr-3" />
+              <span className="text-3xl font-bold">{getCompletedOrders().length}</span>
             </div>
           </CardContent>
         </Card>
@@ -444,13 +349,10 @@ export default function Dashboard() {
       <Tabs defaultValue="orders">
         <TabsList className="mb-6">
           <TabsTrigger value="orders" className="text-base">
-            <ShoppingBag className="h-4 w-4 mr-2" /> Orders
+            <ShoppingBag className="h-4 w-4 mr-2" /> My Orders
           </TabsTrigger>
           <TabsTrigger value="pending" className="text-base">
             <CreditCard className="h-4 w-4 mr-2" /> Pending Payments
-          </TabsTrigger>
-          <TabsTrigger value="invoices" className="text-base">
-            <FileText className="h-4 w-4 mr-2" /> Invoices
           </TabsTrigger>
           <TabsTrigger value="profile" className="text-base">
             <Settings className="h-4 w-4 mr-2" /> Profile
@@ -477,13 +379,12 @@ export default function Dashboard() {
                   <table className="w-full">
                     <thead>
                       <tr className="border-b">
-                        <th className="text-left py-3 px-4 font-medium">Order ID</th>
+                        <th className="text-left py-3 px-4 font-medium">Tracking ID</th>
                         <th className="text-left py-3 px-4 font-medium">Product</th>
                         <th className="text-left py-3 px-4 font-medium">Quantity</th>
                         <th className="text-left py-3 px-4 font-medium">Date</th>
                         <th className="text-left py-3 px-4 font-medium">Status</th>
                         <th className="text-left py-3 px-4 font-medium">Amount</th>
-                        <th className="text-left py-3 px-4 font-medium">Invoice</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -493,65 +394,39 @@ export default function Dashboard() {
                           if (typeof a.timestamp === 'object' && a.timestamp.toMillis) {
                             return b.timestamp.toMillis() - a.timestamp.toMillis();
                           }
-                          const aTime = a.timestamp instanceof Date ? a.timestamp.getTime() : 0;
-                          const bTime = b.timestamp instanceof Date ? b.timestamp.getTime() : 0;
-                          return bTime - aTime;
+                          return 0;
                         })
-                        .map((order) => {
-                          const orderInvoice = findInvoiceForOrder(order.id);
-                          
-                          return (
-                            <tr key={order.id} className="border-b hover:bg-gray-50">
-                              <td className="py-3 px-4 font-mono text-sm">
-                                {order.id.length > 10 ? order.id.substring(0, 10) + '...' : order.id}
-                                {order.trackingId && (
-                                  <div className="text-xs text-gray-500 mt-1">
-                                    {order.trackingId}
-                                  </div>
-                                )}
-                              </td>
-                              <td className="py-3 px-4">{order.productType}</td>
-                              <td className="py-3 px-4">{order.quantity}</td>
-                              <td className="py-3 px-4">
-                                {order.timestamp ? (
-                                  typeof order.timestamp === 'object' && order.timestamp.toDate 
-                                    ? formatDate(order.timestamp.toDate()) 
-                                    : formatDate(order.timestamp)
-                                ) : "N/A"}
-                              </td>
-                              <td className="py-3 px-4">
-                                <div className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(order.status)}`}>
-                                  {getStatusIcon(order.status)}
-                                  <span className="ml-1 capitalize">
-                                    {order.status.replace('_', ' ')}
-                                  </span>
-                                </div>
-                              </td>
-                              <td className="py-3 px-4">{formatCurrency(order.totalAmount)}</td>
-                              <td className="py-3 px-4">
-                                {orderInvoice ? (
-                                  <a
-                                    href={orderInvoice.pdfUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-primary hover:underline font-medium inline-flex items-center"
-                                  >
-                                    <Download className="h-3.5 w-3.5 mr-1" />
-                                    <span>View</span>
-                                  </a>
-                                ) : (
-                                  <span className="text-gray-400">-</span>
-                                )}
-                              </td>
-                            </tr>
-                          );
-                        })}
+                        .map((order) => (
+                          <tr key={order.id} className="border-b hover:bg-gray-50">
+                            <td className="py-3 px-4 font-mono text-sm">
+                              {order.trackingId}
+                            </td>
+                            <td className="py-3 px-4">{order.productType}</td>
+                            <td className="py-3 px-4">{order.quantity}</td>
+                            <td className="py-3 px-4">
+                              {order.timestamp ? (
+                                typeof order.timestamp === 'object' && order.timestamp.toDate 
+                                  ? formatDate(order.timestamp.toDate()) 
+                                  : formatDate(order.timestamp)
+                              ) : "N/A"}
+                            </td>
+                            <td className="py-3 px-4">
+                              <div className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(order.status)}`}>
+                                {getStatusIcon(order.status)}
+                                <span className="ml-1 capitalize">
+                                  {order.status.replace('_', ' ')}
+                                </span>
+                              </div>
+                            </td>
+                            <td className="py-3 px-4">{formatCurrency(order.totalAmount)}</td>
+                          </tr>
+                        ))}
                     </tbody>
                   </table>
                 </div>
               ) : (
                 <div className="text-center py-8">
-                  <p className="text-gray-500 mb-4">You haven't placed any orders yet.</p>
+                  <p className="text-gray-500 mb-4">You haven't completed any orders yet.</p>
                   <Link to="/order">
                     <Button>Place Your First Order</Button>
                   </Link>
@@ -581,7 +456,7 @@ export default function Dashboard() {
                   <table className="w-full">
                     <thead>
                       <tr className="border-b">
-                        <th className="text-left py-3 px-4 font-medium">Order ID</th>
+                        <th className="text-left py-3 px-4 font-medium">Tracking ID</th>
                         <th className="text-left py-3 px-4 font-medium">Product</th>
                         <th className="text-left py-3 px-4 font-medium">Quantity</th>
                         <th className="text-left py-3 px-4 font-medium">Date</th>
@@ -596,57 +471,46 @@ export default function Dashboard() {
                           if (typeof a.timestamp === 'object' && a.timestamp.toMillis) {
                             return b.timestamp.toMillis() - a.timestamp.toMillis();
                           }
-                          const aTime = a.timestamp instanceof Date ? a.timestamp.getTime() : 0;
-                          const bTime = b.timestamp instanceof Date ? b.timestamp.getTime() : 0;
-                          return bTime - aTime;
+                          return 0;
                         })
-                        .map((order) => {
-                          const paymentFailed = order.paymentStatus === "failed";
-                          
-                          return (
-                            <tr key={order.id} className="border-b hover:bg-gray-50">
-                              <td className="py-3 px-4 font-mono text-sm">
-                                {order.id.length > 10 ? order.id.substring(0, 10) + '...' : order.id}
-                                {order.trackingId && (
-                                  <div className="text-xs text-gray-500 mt-1">
-                                    {order.trackingId}
-                                  </div>
+                        .map((order) => (
+                          <tr key={order.id} className="border-b hover:bg-gray-50">
+                            <td className="py-3 px-4 font-mono text-sm">
+                              {order.trackingId}
+                            </td>
+                            <td className="py-3 px-4">{order.productType}</td>
+                            <td className="py-3 px-4">{order.quantity}</td>
+                            <td className="py-3 px-4">
+                              {order.timestamp ? (
+                                typeof order.timestamp === 'object' && order.timestamp.toDate 
+                                  ? formatDate(order.timestamp.toDate()) 
+                                  : formatDate(order.timestamp)
+                              ) : "N/A"}
+                            </td>
+                            <td className="py-3 px-4">{formatCurrency(order.totalAmount)}</td>
+                            <td className="py-3 px-4">
+                              <Button 
+                                size="sm" 
+                                variant="default" 
+                                onClick={() => handleRetryPayment(order)}
+                                disabled={processingPayment}
+                                className="text-xs"
+                              >
+                                {processingPayment ? (
+                                  <>
+                                    <div className="mr-2 h-3 w-3 animate-spin rounded-full border-t-2 border-white"></div>
+                                    Processing...
+                                  </>
+                                ) : (
+                                  <>
+                                    <CreditCard className="h-3 w-3 mr-1" />
+                                    Complete Payment
+                                  </>
                                 )}
-                              </td>
-                              <td className="py-3 px-4">{order.productType}</td>
-                              <td className="py-3 px-4">{order.quantity}</td>
-                              <td className="py-3 px-4">
-                                {order.timestamp ? (
-                                  typeof order.timestamp === 'object' && order.timestamp.toDate 
-                                    ? formatDate(order.timestamp.toDate()) 
-                                    : formatDate(order.timestamp)
-                                ) : "N/A"}
-                              </td>
-                              <td className="py-3 px-4">{formatCurrency(order.totalAmount)}</td>
-                              <td className="py-3 px-4">
-                                <Button 
-                                  size="sm" 
-                                  variant="default" 
-                                  onClick={() => handleRetryPayment(order)}
-                                  disabled={processingPayment}
-                                  className="text-xs"
-                                >
-                                  {processingPayment ? (
-                                    <>
-                                      <div className="mr-2 h-3 w-3 animate-spin rounded-full border-t-2 border-white"></div>
-                                      Processing...
-                                    </>
-                                  ) : (
-                                    <>
-                                      <CreditCard className="h-3 w-3 mr-1" />
-                                      {paymentFailed ? "Retry Payment" : "Complete Payment"}
-                                    </>
-                                  )}
-                                </Button>
-                              </td>
-                            </tr>
-                          );
-                        })}
+                              </Button>
+                            </td>
+                          </tr>
+                        ))}
                     </tbody>
                   </table>
                 </div>
@@ -656,74 +520,6 @@ export default function Dashboard() {
                   <Link to="/order">
                     <Button>Place New Order</Button>
                   </Link>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="invoices">
-          <Card>
-            <CardHeader>
-              <CardTitle>Invoice History</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {loading ? (
-                <div className="flex justify-center p-6">
-                  <div className="animate-spin rounded-full h-12 w-12 border-t-4 border-primary border-solid"></div>
-                </div>
-              ) : invoices.length > 0 ? (
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="border-b">
-                        <th className="text-left py-3 px-4 font-medium">Invoice ID</th>
-                        <th className="text-left py-3 px-4 font-medium">Order ID</th>
-                        <th className="text-left py-3 px-4 font-medium">Date</th>
-                        <th className="text-left py-3 px-4 font-medium">Amount</th>
-                        <th className="text-left py-3 px-4 font-medium">Payment Method</th>
-                        <th className="text-left py-3 px-4 font-medium">Actions</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {invoices
-                        .sort((a, b) => {
-                          if (!a.createdAt || !b.createdAt) return 0;
-                          if (typeof a.createdAt === 'object' && a.createdAt.toMillis) {
-                            return b.createdAt.toMillis() - a.createdAt.toMillis();
-                          }
-                          return 0;
-                        })
-                        .map((invoice) => (
-                          <tr key={invoice.id} className="border-b hover:bg-gray-50">
-                            <td className="py-3 px-4 font-mono text-sm">{invoice.invoiceId || invoice.id}</td>
-                            <td className="py-3 px-4 font-mono text-sm">{invoice.orderId}</td>
-                            <td className="py-3 px-4">
-                              {invoice.createdAt && typeof invoice.createdAt === 'object' && invoice.createdAt.toDate 
-                                ? formatDate(invoice.createdAt.toDate()) 
-                                : "N/A"}
-                            </td>
-                            <td className="py-3 px-4">{formatCurrency(invoice.totalAmount)}</td>
-                            <td className="py-3 px-4">{invoice.paymentMethod || "Online"}</td>
-                            <td className="py-3 px-4">
-                              <a
-                                href={invoice.pdfUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-primary hover:underline font-medium inline-flex items-center"
-                              >
-                                <Download className="h-3.5 w-3.5 mr-1" />
-                                <span>Download PDF</span>
-                              </a>
-                            </td>
-                          </tr>
-                        ))}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <div className="text-center py-8">
-                  <p className="text-gray-500">No invoices available yet.</p>
                 </div>
               )}
             </CardContent>

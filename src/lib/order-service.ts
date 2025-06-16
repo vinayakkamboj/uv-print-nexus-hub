@@ -1,6 +1,6 @@
 
 import { db } from './firebase';
-import { collection, query, where, getDocs, orderBy, limit, Timestamp } from 'firebase/firestore';
+import { collection, query, where, getDocs, orderBy, limit, Timestamp, doc, updateDoc } from 'firebase/firestore';
 
 // Track processed orders to prevent duplicates
 const processedOrders = new Set<string>();
@@ -47,7 +47,7 @@ export const checkForRecentDuplicateOrder = async (
       } else if (orderData.createdAt instanceof Date) {
         orderDate = orderData.createdAt;
       } else {
-        continue; // Skip if we can't determine the date
+        continue;
       }
       
       if (orderDate > fiveMinutesAgo) {
@@ -63,8 +63,30 @@ export const checkForRecentDuplicateOrder = async (
     
   } catch (error) {
     console.error("Error checking for duplicate orders:", error);
-    // If there's an error checking, allow the order to proceed
     return { isDuplicate: false };
+  }
+};
+
+// Simple function to move order from pending to completed after payment verification
+export const moveOrderToCompleted = async (orderId: string, razorpayPaymentId: string): Promise<boolean> => {
+  try {
+    console.log("Moving order to completed:", orderId, razorpayPaymentId);
+    
+    const orderRef = doc(db, 'orders', orderId);
+    await updateDoc(orderRef, {
+      status: 'received',
+      paymentStatus: 'paid',
+      razorpayPaymentId: razorpayPaymentId,
+      paymentCompletedAt: Timestamp.now(),
+      lastUpdated: Timestamp.now()
+    });
+    
+    console.log("Order moved to completed successfully");
+    return true;
+    
+  } catch (error) {
+    console.error("Error moving order to completed:", error);
+    return false;
   }
 };
 
@@ -93,7 +115,7 @@ export const getPendingPaymentOrders = async (userId: string): Promise<any[]> =>
     const pendingQuery = query(
       collection(db, 'orders'),
       where('userId', '==', userId),
-      where('paymentStatus', 'in', ['pending', 'failed']),
+      where('paymentStatus', '==', 'pending'),
       orderBy('timestamp', 'desc')
     );
     
@@ -126,6 +148,26 @@ export const getCompletedOrders = async (userId: string): Promise<any[]> => {
     
   } catch (error) {
     console.error("Error fetching completed orders:", error);
+    return [];
+  }
+};
+
+export const getAllUserOrders = async (userId: string): Promise<any[]> => {
+  try {
+    const ordersQuery = query(
+      collection(db, 'orders'),
+      where('userId', '==', userId),
+      orderBy('timestamp', 'desc')
+    );
+    
+    const ordersSnapshot = await getDocs(ordersQuery);
+    return ordersSnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+    
+  } catch (error) {
+    console.error("Error fetching user orders:", error);
     return [];
   }
 };
