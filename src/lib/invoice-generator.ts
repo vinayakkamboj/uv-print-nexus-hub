@@ -1,3 +1,4 @@
+
 // src/lib/invoice-generator.ts - Apply these changes to your existing file
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
@@ -20,7 +21,7 @@ export interface InvoiceData {
   hsnCode?: string;
 }
 
-export const generateInvoicePDF = async (invoiceData: InvoiceData): Promise<Blob> => {
+export const generateInvoicePDF = async (invoiceData: InvoiceData): Promise<{ blob: Blob; url: string }> => {
   return new Promise((resolve, reject) => {
     try {
       console.log("Starting PDF generation for invoice:", invoiceData.invoiceId);
@@ -154,8 +155,10 @@ export const generateInvoicePDF = async (invoiceData: InvoiceData): Promise<Blob
       
       // Convert to blob
       const pdfBlob = doc.output('blob');
+      const pdfUrl = URL.createObjectURL(pdfBlob);
+      
       console.log("PDF blob created successfully:", pdfBlob.size, "bytes");
-      resolve(pdfBlob);
+      resolve({ blob: pdfBlob, url: pdfUrl });
     } catch (error) {
       console.error('Error generating PDF:', error);
       // Create a simple fallback PDF if the main generation fails
@@ -166,8 +169,9 @@ export const generateInvoicePDF = async (invoiceData: InvoiceData): Promise<Blob
         fallbackDoc.text('There was an error generating the complete invoice.', 10, 20);
         fallbackDoc.text('Please contact support.', 10, 30);
         const fallbackBlob = fallbackDoc.output('blob');
+        const fallbackUrl = URL.createObjectURL(fallbackBlob);
         console.log("Fallback PDF created:", fallbackBlob.size, "bytes");
-        resolve(fallbackBlob);
+        resolve({ blob: fallbackBlob, url: fallbackUrl });
       } catch (fallbackError) {
         console.error("Even fallback PDF failed:", fallbackError);
         reject(new Error("PDF generation failed completely"));

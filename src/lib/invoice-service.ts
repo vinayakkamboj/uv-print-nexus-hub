@@ -1,6 +1,6 @@
 
 import { db } from './firebase';
-import { collection, addDoc, doc, updateDoc, getDoc, Timestamp } from 'firebase/firestore';
+import { collection, addDoc, doc, updateDoc, getDoc, query, where, getDocs, orderBy, Timestamp } from 'firebase/firestore';
 import { generateInvoicePDF } from './invoice-generator';
 import { sendInvoiceEmail } from './email-service';
 import { PaymentDetails } from './payment-service';
@@ -107,28 +107,35 @@ export const createAndSendInvoice = async (orderData: OrderData, paymentDetails:
     // Generate invoice ID
     const invoiceId = `INV-${orderData.trackingId || orderData.id?.substring(0, 8)}-${Date.now().toString().slice(-4)}`;
     
-    // Create invoice data
+    // Create invoice data that matches the InvoiceData interface
     const invoiceData = {
       invoiceId,
-      orderData,
-      paymentDetails,
-      issueDate: new Date(),
-      dueDate: new Date(),
+      orderId: orderData.id || '',
+      orderDate: orderData.timestamp?.toDate ? orderData.timestamp.toDate() : new Date(),
+      customerName: orderData.customerName,
+      customerEmail: orderData.customerEmail,
+      customerAddress: orderData.deliveryAddress,
+      products: [{
+        name: orderData.productType,
+        quantity: orderData.quantity,
+        price: orderData.totalAmount
+      }],
+      totalAmount: orderData.totalAmount,
+      gstNumber: orderData.gstNumber,
+      hsnCode: orderData.hsnCode
     };
     
     // Generate PDF
-    let pdfBlob: Blob;
-    let pdfUrl: string;
+    let pdfResult: { blob: Blob; url: string };
     
     try {
-      const result = await generateInvoicePDF(invoiceData);
-      pdfBlob = result.blob;
-      pdfUrl = result.url;
+      pdfResult = await generateInvoicePDF(invoiceData);
     } catch (pdfError) {
       console.error("Error generating PDF:", pdfError);
       // Create fallback PDF
-      pdfBlob = new Blob(['Invoice content placeholder'], { type: 'application/pdf' });
-      pdfUrl = `https://placeholder.com/invoice/${invoiceId}.pdf`;
+      const fallbackBlob = new Blob(['Invoice content placeholder'], { type: 'application/pdf' });
+      const fallbackUrl = URL.createObjectURL(fallbackBlob);
+      pdfResult = { blob: fallbackBlob, url: fallbackUrl };
     }
     
     // Update order with invoice ID
@@ -145,7 +152,13 @@ export const createAndSendInvoice = async (orderData: OrderData, paymentDetails:
     
     // Send email (non-blocking)
     try {
-      await sendInvoiceEmail(orderData.customerEmail, invoiceData, pdfBlob);
+      await sendInvoiceEmail(orderData.customerEmail, {
+        invoiceId,
+        orderData,
+        paymentDetails,
+        issueDate: new Date(),
+        dueDate: new Date(),
+      }, pdfResult.blob);
     } catch (emailError) {
       console.error("Error sending invoice email:", emailError);
       // Don't fail the whole process if email fails
@@ -154,8 +167,8 @@ export const createAndSendInvoice = async (orderData: OrderData, paymentDetails:
     return {
       success: true,
       invoiceId,
-      pdfBlob,
-      pdfUrl
+      pdfBlob: pdfResult.blob,
+      pdfUrl: pdfResult.url
     };
     
   } catch (error) {
@@ -164,5 +177,30 @@ export const createAndSendInvoice = async (orderData: OrderData, paymentDetails:
       success: false,
       message: "Failed to create invoice"
     };
+  }
+};
+
+export const getUserOrders = async (userId: string): Promise<OrderData[]> => {
+  try {
+    console.log("Fetching orders for user:", userId);
+    
+    const ordersQuery = query(
+      collection(db, 'orders'),
+      where('userId', '==', userId),
+      orderBy('timestamp', 'desc')
+    );
+    
+    const ordersSnapshot = await getDocs(ordersQuery);
+    const orders = ordersSnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    })) as OrderData[];
+    
+    console.log(`Found ${orders.length} orders for user ${userId}`);
+    return orders;
+    
+  } catch (error) {
+    console.error("Error fetching user orders:", error);
+    return [];
   }
 };

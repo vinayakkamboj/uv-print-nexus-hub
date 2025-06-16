@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -26,6 +27,7 @@ import { useToast } from "@/hooks/use-toast";
 import { generateId, isValidGSTIN } from "@/lib/utils";
 import { AlertCircle, Upload, Download } from "lucide-react";
 import { createOrder, updateOrderAfterPayment, createAndSendInvoice } from "@/lib/invoice-service";
+import { checkForRecentDuplicateOrder, markOrderAsProcessed } from "@/lib/order-service";
 import { initializeRazorpay, createRazorpayOrder, processPayment } from "@/lib/payment-service";
 import { Progress } from "@/components/ui/progress";
 
