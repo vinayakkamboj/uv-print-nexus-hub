@@ -236,8 +236,28 @@ export default function Order() {
     try {
       // Set loading state with safety timeout
       setAndWatchLoadingState(true);
-      setProcessingStep("Processing your order...");
+      setProcessingStep("Checking for duplicate orders...");
       setUploadProgress(5);
+      
+      // Check for recent duplicate orders
+      const estimatedPrice = calculateEstimatedPrice();
+      const duplicateCheck = await checkForRecentDuplicateOrder(
+        user.uid,
+        userData?.email || user?.email || "customer@example.com",
+        estimatedPrice
+      );
+      
+      if (duplicateCheck.isDuplicate && duplicateCheck.existingOrderId) {
+        toast({
+          title: "Duplicate Order Detected",
+          description: "You have a recent order with the same details. Please check your orders.",
+          variant: "destructive",
+        });
+        setAndWatchLoadingState(false);
+        return;
+      }
+      
+      setProcessingStep("Processing your order...");
       
       // Create customer tracking ID first
       const customerTrackingId = `TRK-${user?.uid.substring(0, 6)}-${generateId(8).toUpperCase()}`;
@@ -308,8 +328,6 @@ export default function Order() {
       
       simulateProgress(40, 75, 500); // Continue progress
       
-      const estimatedPrice = calculateEstimatedPrice();
-      
       // Get HSN code based on product type
       const hsnCode = hsnCodes[productType as keyof typeof hsnCodes] || "4911";
 
@@ -327,7 +345,7 @@ export default function Order() {
         customerName: userData?.name || user?.displayName || "Customer",
         customerEmail: userData?.email || user?.email || "customer@example.com",
         hsnCode,
-        trackingId: customerTrackingId, // Add tracking ID to the order
+        trackingId: customerTrackingId,
       };
       
       simulateProgress(75, 90, 500); // Continue progress
@@ -340,6 +358,9 @@ export default function Order() {
         if (!orderResult.success || !orderResult.orderId) {
           throw new Error(orderResult.message || "Failed to create order");
         }
+        
+        // Mark this order as being processed
+        markOrderAsProcessed(orderResult.orderId);
         
         // Update tracking ID if provided in the result
         if (orderResult.trackingId) {

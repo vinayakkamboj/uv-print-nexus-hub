@@ -1,158 +1,136 @@
 
-import { collection, addDoc, updateDoc, doc, getDoc, query, where, getDocs, serverTimestamp } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { db } from './firebase';
+import { collection, query, where, getDocs, orderBy, limit } from 'firebase/firestore';
 
-export interface OrderData {
-  id?: string;
+interface RecentOrder {
+  id: string;
   userId: string;
-  customerName: string;
   customerEmail: string;
-  customerPhone: string;
-  customerGST?: string;
-  productType: string;
-  quantity: number;
-  specifications: string;
-  deliveryAddress: string;
   totalAmount: number;
+  timestamp: any;
   status: string;
   paymentStatus: string;
-  paymentDetails?: {
-    id: string;
-    method: string;
-    paymentId?: string;
-  };
-  trackingId?: string;
-  timestamp: any;
-  lastUpdated?: any;
 }
 
-// Track orders being created to prevent duplicates
-const ordersBeingCreated = new Set<string>();
+// Track processed orders to prevent duplicates
+const processedOrders = new Set<string>();
 
-export const createOrder = async (orderData: Omit<OrderData, 'id' | 'timestamp' | 'lastUpdated'>): Promise<string> => {
-  console.log("Creating order for user:", orderData.userId);
-  
-  // Create a unique key for this order attempt
-  const orderKey = `${orderData.userId}_${orderData.productType}_${orderData.totalAmount}_${Date.now()}`;
-  
-  // Check if this exact order is already being created
-  if (ordersBeingCreated.has(orderKey)) {
-    console.log("Order creation already in progress, preventing duplicate");
-    throw new Error("Order creation already in progress");
-  }
-  
-  // Mark order as being created
-  ordersBeingCreated.add(orderKey);
-  
+// Check if an order was recently created to prevent duplicates
+export const checkForRecentDuplicateOrder = async (
+  userId: string,
+  customerEmail: string,
+  totalAmount: number,
+  timeWindowMinutes: number = 5
+): Promise<{ isDuplicate: boolean; existingOrderId?: string }> => {
   try {
-    // Check for recent duplicate orders (within last 5 minutes)
-    const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
-    const duplicateCheck = query(
-      collection(db, "orders"),
-      where("userId", "==", orderData.userId),
-      where("productType", "==", orderData.productType),
-      where("totalAmount", "==", orderData.totalAmount)
-    );
+    console.log("Checking for recent duplicate orders...");
     
-    const duplicateSnapshot = await getDocs(duplicateCheck);
-    const recentOrders = duplicateSnapshot.docs.filter(doc => {
-      const orderTimestamp = doc.data().timestamp;
-      if (orderTimestamp && orderTimestamp.toDate) {
-        return orderTimestamp.toDate() > fiveMinutesAgo;
-      }
-      return false;
-    });
+    const timeThreshold = new Date();
+    timeThreshold.setMinutes(timeThreshold.getMinutes() - timeWindowMinutes);
     
-    if (recentOrders.length > 0) {
-      console.log("Recent duplicate order found, preventing creation");
-      throw new Error("Duplicate order detected within 5 minutes");
-    }
-    
-    // Generate tracking ID
-    const trackingId = `MUV${Date.now().toString(36).toUpperCase()}${Math.random().toString(36).substring(2, 5).toUpperCase()}`;
-    
-    // Create the order
-    const orderDoc = await addDoc(collection(db, "orders"), {
-      ...orderData,
-      trackingId,
-      timestamp: serverTimestamp(),
-      lastUpdated: serverTimestamp()
-    });
-    
-    console.log("Order created successfully:", orderDoc.id);
-    return orderDoc.id;
-  } catch (error) {
-    console.error("Error creating order:", error);
-    throw error;
-  } finally {
-    // Always remove from tracking set
-    ordersBeingCreated.delete(orderKey);
-  }
-};
-
-export const updateOrderStatus = async (
-  orderId: string, 
-  status: string, 
-  paymentStatus?: string,
-  paymentDetails?: any
-): Promise<void> => {
-  console.log("Updating order status:", orderId, status, paymentStatus);
-  
-  try {
-    const updateData: any = {
-      status,
-      lastUpdated: serverTimestamp()
-    };
-    
-    if (paymentStatus) {
-      updateData.paymentStatus = paymentStatus;
-    }
-    
-    if (paymentDetails) {
-      updateData.paymentDetails = paymentDetails;
-    }
-    
-    await updateDoc(doc(db, "orders", orderId), updateData);
-    console.log("Order status updated successfully");
-  } catch (error) {
-    console.error("Error updating order status:", error);
-    throw error;
-  }
-};
-
-export const getOrder = async (orderId: string): Promise<OrderData | null> => {
-  try {
-    const orderDoc = await getDoc(doc(db, "orders", orderId));
-    if (orderDoc.exists()) {
-      return { id: orderDoc.id, ...orderDoc.data() } as OrderData;
-    }
-    return null;
-  } catch (error) {
-    console.error("Error fetching order:", error);
-    throw error;
-  }
-};
-
-export const getUserOrders = async (userId: string): Promise<OrderData[]> => {
-  try {
+    // Query for recent orders by this user with same amount
     const ordersQuery = query(
-      collection(db, "orders"),
-      where("userId", "==", userId)
+      collection(db, 'orders'),
+      where('userId', '==', userId),
+      where('customerEmail', '==', customerEmail),
+      where('totalAmount', '==', totalAmount),
+      orderBy('timestamp', 'desc'),
+      limit(5)
     );
     
-    const ordersSnapshot = await getDocs(ordersQuery);
-    return ordersSnapshot.docs.map(doc => ({
+    const querySnapshot = await getDocs(ordersQuery);
+    
+    for (const doc of querySnapshot.docs) {
+      const order = doc.data() as RecentOrder;
+      const orderTime = order.timestamp?.toDate ? order.timestamp.toDate() : new Date(order.timestamp);
+      
+      if (orderTime > timeThreshold) {
+        console.log("Found recent duplicate order:", doc.id);
+        return { isDuplicate: true, existingOrderId: doc.id };
+      }
+    }
+    
+    return { isDuplicate: false };
+    
+  } catch (error) {
+    console.error("Error checking for duplicate orders:", error);
+    return { isDuplicate: false };
+  }
+};
+
+// Mark an order as processed to prevent duplicate processing
+export const markOrderAsProcessed = (orderId: string) => {
+  processedOrders.add(orderId);
+  console.log("Marked order as processed:", orderId);
+};
+
+// Check if an order is already being processed
+export const isOrderBeingProcessed = (orderId: string): boolean => {
+  return processedOrders.has(orderId);
+};
+
+// Clear processed orders tracking (useful for cleanup)
+export const clearProcessedOrders = () => {
+  processedOrders.clear();
+  console.log("Cleared processed orders tracking");
+};
+
+// Get orders by status for proper filtering
+export const getOrdersByStatus = async (status: 'pending' | 'completed' | 'all', userId?: string) => {
+  try {
+    let ordersQuery;
+    
+    if (userId) {
+      if (status === 'pending') {
+        ordersQuery = query(
+          collection(db, 'orders'),
+          where('userId', '==', userId),
+          where('paymentStatus', 'in', ['pending', 'failed']),
+          orderBy('timestamp', 'desc')
+        );
+      } else if (status === 'completed') {
+        ordersQuery = query(
+          collection(db, 'orders'),
+          where('userId', '==', userId),
+          where('paymentStatus', '==', 'paid'),
+          orderBy('timestamp', 'desc')
+        );
+      } else {
+        ordersQuery = query(
+          collection(db, 'orders'),
+          where('userId', '==', userId),
+          orderBy('timestamp', 'desc')
+        );
+      }
+    } else {
+      if (status === 'pending') {
+        ordersQuery = query(
+          collection(db, 'orders'),
+          where('paymentStatus', 'in', ['pending', 'failed']),
+          orderBy('timestamp', 'desc')
+        );
+      } else if (status === 'completed') {
+        ordersQuery = query(
+          collection(db, 'orders'),
+          where('paymentStatus', '==', 'paid'),
+          orderBy('timestamp', 'desc')
+        );
+      } else {
+        ordersQuery = query(
+          collection(db, 'orders'),
+          orderBy('timestamp', 'desc')
+        );
+      }
+    }
+    
+    const querySnapshot = await getDocs(ordersQuery);
+    return querySnapshot.docs.map(doc => ({
       id: doc.id,
       ...doc.data()
-    })) as OrderData[];
+    }));
+    
   } catch (error) {
-    console.error("Error fetching user orders:", error);
-    throw error;
+    console.error("Error fetching orders by status:", error);
+    return [];
   }
-};
-
-// Clear tracking sets (useful for cleanup)
-export const clearOrderTracking = () => {
-  ordersBeingCreated.clear();
-  console.log("Cleared order creation tracking");
 };

@@ -73,9 +73,10 @@ const PaymentManagement = () => {
       ordersSnapshot.docs.forEach(doc => {
         const order: OrderData = { id: doc.id, ...doc.data() };
         
-        if (order.paymentDetails) {
+        // Only include orders that have payment information
+        if (order.paymentDetails || order.paymentStatus) {
           paymentsData.push({
-            id: order.paymentDetails.id || doc.id,
+            id: order.paymentDetails?.id || doc.id,
             orderId: order.id,
             userId: order.userId || '',
             customerName: order.customerName || '',
@@ -83,22 +84,8 @@ const PaymentManagement = () => {
             amount: order.totalAmount || 0,
             currency: 'INR',
             status: order.paymentStatus || 'pending',
-            method: order.paymentDetails.method || 'Unknown',
-            paymentId: order.paymentDetails.paymentId,
-            timestamp: order.timestamp
-          });
-        } else {
-          // Create payment record even without payment details
-          paymentsData.push({
-            id: doc.id,
-            orderId: order.id,
-            userId: order.userId || '',
-            customerName: order.customerName || '',
-            customerEmail: order.customerEmail || '',
-            amount: order.totalAmount || 0,
-            currency: 'INR',
-            status: order.paymentStatus || 'pending',
-            method: 'Not specified',
+            method: order.paymentDetails?.method || 'Not specified',
+            paymentId: order.paymentDetails?.paymentId,
             timestamp: order.timestamp
           });
         }
