@@ -1,3 +1,4 @@
+
 import { db } from './firebase';
 import { collection, addDoc, doc, updateDoc, getDoc, query, where, getDocs, orderBy, Timestamp } from 'firebase/firestore';
 import { generateInvoicePDF } from './invoice-generator';
@@ -149,9 +150,9 @@ export const createAndSendInvoice = async (orderData: OrderData, paymentDetails:
       }
     }
     
-    // Send email (non-blocking) - pass the complete invoiceData object
+    // Send email (non-blocking) - pass the complete invoiceData object as first parameter
     try {
-      await sendInvoiceEmail(orderData.customerEmail, invoiceData, pdfResult.blob);
+      await sendInvoiceEmail(invoiceData, pdfResult.blob);
     } catch (emailError) {
       console.error("Error sending invoice email:", emailError);
       // Don't fail the whole process if email fails
