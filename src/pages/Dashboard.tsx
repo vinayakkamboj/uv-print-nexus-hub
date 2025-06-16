@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -50,22 +49,6 @@ interface Invoice {
   userId?: string;
 }
 
-interface OrderData {
-  id: string;
-  productType: string;
-  quantity: number;
-  status: string;
-  timestamp: any;
-  totalAmount: number;
-  paymentDetails?: {
-    id: string;
-    paymentId?: string;
-    method?: string;
-    status: string;
-    timestamp: any;
-  };
-}
-
 export default function Dashboard() {
   const { userData, user, updateUserProfile } = useAuth();
   const { toast } = useToast();
@@ -101,13 +84,23 @@ export default function Dashboard() {
       const ordersData = await getUserOrders(userData.uid);
       console.log("Fetched orders:", ordersData);
       
-      // Filter out orders without id and ensure proper typing
-      const typedOrders = ordersData
-        .filter((order): order is OrderData & { id: string } => !!order.id)
+      // Convert OrderData to Order interface, filtering out orders without id
+      const typedOrders: Order[] = ordersData
+        .filter(order => !!order.id)
         .map(order => ({
-          ...order,
+          id: order.id!,
+          productType: order.productType,
+          quantity: order.quantity,
           status: (order.status || "pending_payment") as "pending_payment" | "received" | "processing" | "printed" | "shipped",
-          timestamp: order.timestamp || new Date()
+          timestamp: order.timestamp || new Date(),
+          totalAmount: order.totalAmount,
+          paymentDetails: order.paymentDetails,
+          paymentStatus: order.paymentStatus,
+          trackingId: order.trackingId,
+          userId: order.userId,
+          customerName: order.customerName,
+          customerEmail: order.customerEmail,
+          deliveryAddress: order.deliveryAddress
         }));
       
       setOrders(typedOrders);
@@ -123,7 +116,7 @@ export default function Dashboard() {
       })) as Invoice[];
       setInvoices(invoicesData);
       
-      console.log(`Loaded ${ordersData.length} orders and ${invoicesData.length} invoices`);
+      console.log(`Loaded ${typedOrders.length} orders and ${invoicesData.length} invoices`);
     } catch (error) {
       console.error("Error fetching user data:", error);
       toast({
