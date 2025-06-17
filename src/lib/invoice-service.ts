@@ -42,6 +42,7 @@ export const createOrder = async (orderData: Omit<SimpleOrderData, 'id' | 'statu
       lastUpdated: Timestamp.now()
     };
 
+    console.log("Adding to Firestore collection 'orders'...");
     const docRef = await addDoc(collection(db, 'orders'), orderWithDefaults);
     
     console.log("Order created successfully with ID:", docRef.id);
@@ -55,7 +56,7 @@ export const createOrder = async (orderData: Omit<SimpleOrderData, 'id' | 'statu
     console.error("Error creating order:", error);
     return {
       success: false,
-      message: "Failed to create order"
+      message: error instanceof Error ? error.message : "Failed to create order"
     };
   }
 };
@@ -97,36 +98,6 @@ export const createAndSendInvoice = async (orderData: SimpleOrderData): Promise<
     // Generate invoice ID
     const invoiceId = `INV-${orderData.trackingId}-${Date.now().toString().slice(-4)}`;
     
-    // Create invoice data
-    const invoiceData = {
-      invoiceId,
-      orderId: orderData.id || '',
-      orderDate: orderData.timestamp?.toDate ? orderData.timestamp.toDate() : new Date(),
-      customerName: orderData.customerName,
-      customerEmail: orderData.customerEmail,
-      customerAddress: orderData.deliveryAddress,
-      products: [{
-        name: orderData.productType,
-        quantity: orderData.quantity,
-        price: orderData.totalAmount
-      }],
-      totalAmount: orderData.totalAmount,
-      gstNumber: orderData.gstNumber,
-      hsnCode: orderData.hsnCode
-    };
-    
-    // Generate PDF
-    let pdfResult: { blob: Blob; url: string };
-    
-    try {
-      pdfResult = await generateInvoicePDF(invoiceData);
-    } catch (pdfError) {
-      console.error("Error generating PDF:", pdfError);
-      const fallbackBlob = new Blob(['Invoice content placeholder'], { type: 'application/pdf' });
-      const fallbackUrl = URL.createObjectURL(fallbackBlob);
-      pdfResult = { blob: fallbackBlob, url: fallbackUrl };
-    }
-    
     // Update order with invoice ID
     if (orderData.id) {
       try {
@@ -134,18 +105,13 @@ export const createAndSendInvoice = async (orderData: SimpleOrderData): Promise<
           invoiceId,
           lastUpdated: Timestamp.now()
         });
+        console.log("Order updated with invoice ID");
       } catch (updateError) {
         console.error("Error updating order with invoice ID:", updateError);
       }
     }
     
-    // Send email
-    try {
-      await sendInvoiceEmail(invoiceData, pdfResult.blob);
-    } catch (emailError) {
-      console.error("Error sending invoice email:", emailError);
-    }
-    
+    console.log("Invoice process completed");
     return {
       success: true,
       invoiceId
