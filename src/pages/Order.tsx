@@ -26,7 +26,6 @@ import { useToast } from "@/hooks/use-toast";
 import { generateId, isValidGSTIN } from "@/lib/utils";
 import { AlertCircle, Upload, Download } from "lucide-react";
 import { createOrder, updateOrderAfterPayment, createAndSendInvoice, SimpleOrderData } from "@/lib/invoice-service";
-import { checkForRecentDuplicateOrder } from "@/lib/order-service";
 import { initializeRazorpay, createRazorpayOrder, processPayment } from "@/lib/payment-service";
 import { Progress } from "@/components/ui/progress";
 import { Timestamp } from "firebase/firestore";
@@ -78,9 +77,7 @@ export default function Order() {
     // Initialize Razorpay when the component mounts
     initializeRazorpay()
       .then((success) => {
-        if (!success) {
-          console.log("Razorpay SDK failed to load - this is fine in demo mode");
-        }
+        console.log("Razorpay initialization result:", success);
       })
       .catch(error => {
         console.error("Error initializing Razorpay:", error);
@@ -120,30 +117,16 @@ export default function Order() {
     return basePrice * 3;
   };
 
-  const simulateProgress = useCallback((startAt: number, endAt: number, duration: number) => {
-    const start = Date.now();
-    const updateProgress = () => {
-      const elapsed = Date.now() - start;
-      const progress = startAt + (elapsed / duration) * (endAt - startAt);
-      
-      if (progress <= endAt) {
-        setUploadProgress(Math.min(progress, endAt));
-        requestAnimationFrame(updateProgress);
-      } else {
-        setUploadProgress(endAt);
-      }
-    };
-    
-    requestAnimationFrame(updateProgress);
-  }, []);
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    console.log("Starting order submission...");
+    console.log("🚀 Starting order submission...");
     setOrderError(null);
+    setOrderComplete(false);
 
-    if (!productType || !quantity || !deliveryAddress) {
+    // Basic validation
+    if (!productType || !quantity || !deliveryAddress || !file || !user) {
+      console.log("❌ Validation failed");
       toast({
         title: "Error",
         description: "Please fill in all required fields.",
@@ -153,6 +136,7 @@ export default function Order() {
     }
 
     if (gstNumber && !isValidGSTIN(gstNumber)) {
+      console.log("❌ Invalid GST number");
       toast({
         title: "Error",
         description: "Please enter a valid GST number.",
@@ -161,56 +145,23 @@ export default function Order() {
       return;
     }
 
-    if (!file) {
-      toast({
-        title: "Error",
-        description: "Please upload a design file.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (!user) {
-      toast({
-        title: "Authentication Error",
-        description: "You must be logged in to place an order.",
-        variant: "destructive",
-      });
-      navigate("/login");
-      return;
-    }
-
     setLoading(true);
     setUploadProgress(10);
     setProcessingStep("Starting order creation...");
 
     try {
-      // Check for duplicates first
-      const estimatedPrice = calculateEstimatedPrice();
-      setProcessingStep("Checking for duplicate orders...");
+      console.log("📦 Step 1: Preparing order data");
       setUploadProgress(20);
-      
-      const duplicateCheck = await checkForRecentDuplicateOrder(
-        user.uid,
-        userData?.email || user?.email || "customer@example.com",
-        estimatedPrice
-      );
-      
-      if (duplicateCheck.isDuplicate) {
-        toast({
-          title: "Duplicate Order Detected",
-          description: "You have a recent order with the same details. Please check your orders.",
-          variant: "destructive",
-        });
-        setLoading(false);
-        setUploadProgress(0);
-        setProcessingStep("");
-        return;
-      }
+      setProcessingStep("Preparing order data...");
+
+      const estimatedPrice = calculateEstimatedPrice();
+      const customerTrackingId = `TRK-${user.uid.substring(0, 6)}-${generateId(8).toUpperCase()}`;
+      const hsnCode = hsnCodes[productType as keyof typeof hsnCodes] || "4911";
 
       // Handle file upload
-      setProcessingStep("Uploading design file...");
+      console.log("📁 Step 2: Uploading file");
       setUploadProgress(40);
+      setProcessingStep("Uploading design file...");
       
       let fileUrl = "";
       const demoMode = import.meta.env.VITE_RAZORPAY_DEMO_MODE === 'true';
@@ -223,10 +174,11 @@ export default function Order() {
         try {
           const fileExtension = file.name.split('.').pop();
           const uniqueFileName = `${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${fileExtension}`;
-          const storageRef = ref(storage, `designs/${user?.uid}/${uniqueFileName}`);
+          const storageRef = ref(storage, `designs/${user.uid}/${uniqueFileName}`);
           
           const uploadResult = await uploadBytes(storageRef, file);
           fileUrl = await getDownloadURL(uploadResult.ref);
+          console.log("✅ File uploaded successfully");
         } catch (uploadError) {
           console.error("File upload failed, using local URL:", uploadError);
           const blob = new Blob([file], { type: file.type });
@@ -235,14 +187,12 @@ export default function Order() {
       }
 
       // Create order data
-      setProcessingStep("Creating order...");
+      console.log("🗃️ Step 3: Creating order in database");
       setUploadProgress(60);
-      
-      const customerTrackingId = `TRK-${user?.uid.substring(0, 6)}-${generateId(8).toUpperCase()}`;
-      const hsnCode = hsnCodes[productType as keyof typeof hsnCodes] || "4911";
+      setProcessingStep("Creating order...");
 
       const orderData = {
-        userId: user?.uid,
+        userId: user.uid,
         productType,
         quantity: parseInt(quantity),
         specifications,
@@ -257,20 +207,19 @@ export default function Order() {
         trackingId: customerTrackingId,
       };
 
-      // Create the order in database
       const orderResult = await createOrder(orderData);
       
       if (!orderResult.success || !orderResult.orderId) {
         throw new Error(orderResult.message || "Failed to create order");
       }
 
-      console.log("Order created successfully:", orderResult.orderId);
+      console.log("✅ Order created successfully:", orderResult.orderId);
       
-      // Now process payment
-      setProcessingStep("Processing payment...");
+      // Process payment
+      console.log("💳 Step 4: Processing payment");
       setUploadProgress(80);
+      setProcessingStep("Processing payment...");
 
-      // Create Razorpay order
       const razorpayOrder = await createRazorpayOrder(
         orderResult.orderId,
         estimatedPrice,
@@ -278,7 +227,8 @@ export default function Order() {
         orderData.customerEmail
       );
 
-      // Process payment
+      console.log("💳 Razorpay order created:", razorpayOrder.id);
+
       const paymentResult = await processPayment({
         orderId: orderResult.orderId,
         razorpayOrderId: razorpayOrder.id,
@@ -293,10 +243,12 @@ export default function Order() {
         deliveryAddress: orderData.deliveryAddress
       });
 
-      // Check payment result
+      console.log("💳 Payment result:", paymentResult);
+
       if (paymentResult.status === 'completed' && paymentResult.paymentId) {
-        setProcessingStep("Payment successful! Finalizing order...");
+        console.log("✅ Step 5: Payment successful, finalizing order");
         setUploadProgress(95);
+        setProcessingStep("Payment successful! Finalizing order...");
         
         // Update order with payment success
         await updateOrderAfterPayment(orderResult.orderId, paymentResult.paymentId);
@@ -314,11 +266,14 @@ export default function Order() {
         };
         
         // Generate invoice
+        console.log("📄 Generating invoice");
         await createAndSendInvoice(completeOrderData);
         
         setUploadProgress(100);
         setProcessingStep("Order completed successfully!");
         setOrderComplete(true);
+        
+        console.log("🎉 Order process completed successfully!");
         
         toast({
           title: "Order Placed Successfully",
@@ -330,13 +285,14 @@ export default function Order() {
       }
       
     } catch (error) {
-      console.error("Order submission error:", error);
+      console.error("❌ Order submission error:", error);
       
-      setOrderError(error instanceof Error ? error.message : "Failed to process order");
+      const errorMessage = error instanceof Error ? error.message : "Failed to process order";
+      setOrderError(errorMessage);
       
       toast({
         title: "Order Error",
-        description: error instanceof Error ? error.message : "There was a problem processing your order.",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
@@ -353,6 +309,7 @@ export default function Order() {
   };
 
   const handleRetry = () => {
+    console.log("🔄 Retrying order creation");
     setOrderError(null);
     setLoading(false);
     setProcessingStep("");
@@ -425,8 +382,11 @@ export default function Order() {
                       <div className="mb-4">
                         <p className="text-sm font-medium mb-2">{processingStep}</p>
                         <Progress value={uploadProgress} className="h-2" />
+                        <p className="text-xs text-gray-500 mt-1">Please wait, do not refresh the page...</p>
                       </div>
                     )}
+                    
+                    
                     
                     <div className="space-y-2">
                       <Label htmlFor="productType">Product Type</Label>
@@ -549,6 +509,7 @@ export default function Order() {
             </Card>
           </div>
 
+          
           <div>
             <Card>
               <CardHeader>

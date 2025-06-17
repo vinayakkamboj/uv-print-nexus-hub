@@ -27,36 +27,33 @@ const DEMO_MODE = import.meta.env.VITE_RAZORPAY_DEMO_MODE === 'true';
 // Default to test key if not provided
 const RAZORPAY_KEY_ID = import.meta.env.VITE_RAZORPAY_KEY_ID || "rzp_test_1DP5mmOlF5G5ag";
 
-// Track processed payments to prevent duplicates
-const processedPayments = new Set<string>();
-
 export const initializeRazorpay = (): Promise<boolean> => {
   return new Promise((resolve) => {
     // Check if Razorpay is already loaded
     if (window.Razorpay) {
-      console.log("Razorpay already loaded");
+      console.log("✅ Razorpay already loaded");
       resolve(true);
       return;
     }
     
-    console.log("Loading Razorpay script...");
+    console.log("📦 Loading Razorpay script...");
     const script = document.createElement('script');
     script.src = 'https://checkout.razorpay.com/v1/checkout.js';
     script.async = true;
     
     const timeoutId = setTimeout(() => {
-      console.warn("Razorpay script load timed out, will use demo mode");
+      console.warn("⚠️ Razorpay script load timed out, will use demo mode");
       resolve(false);
-    }, 5000);
+    }, 10000); // Increased timeout
     
     script.onload = () => {
-      console.log("Razorpay script loaded successfully");
+      console.log("✅ Razorpay script loaded successfully");
       clearTimeout(timeoutId);
       resolve(true);
     };
     
     script.onerror = () => {
-      console.error("Failed to load Razorpay script, will use demo mode");
+      console.error("❌ Failed to load Razorpay script, will use demo mode");
       clearTimeout(timeoutId);
       resolve(false);
     };
@@ -71,21 +68,12 @@ export const createRazorpayOrder = async (
   customerName: string, 
   customerEmail: string
 ): Promise<PaymentDetails> => {
-  console.log("Creating Razorpay order for orderId:", orderId);
-  
-  // Check if this order was already processed to prevent duplicates
-  if (processedPayments.has(orderId)) {
-    console.log("Order already processed, preventing duplicate:", orderId);
-    throw new Error("Order already being processed");
-  }
-  
-  // Mark order as being processed
-  processedPayments.add(orderId);
+  console.log("💳 Creating Razorpay order for orderId:", orderId);
   
   try {
     // Generate a unique Razorpay order ID
     const razorpayOrderId = `rzp_${orderId.substring(0, 8)}_${Math.random().toString(36).substring(2, 8)}`;
-    console.log("Generated Razorpay order:", razorpayOrderId);
+    console.log("✅ Generated Razorpay order:", razorpayOrderId);
     
     return {
       id: razorpayOrderId,
@@ -95,8 +83,7 @@ export const createRazorpayOrder = async (
       timestamp: new Date()
     };
   } catch (error) {
-    // Remove from processed payments on error
-    processedPayments.delete(orderId);
+    console.error("❌ Error creating Razorpay order:", error);
     throw error;
   }
 };
@@ -117,21 +104,11 @@ export const processPayment = (
     orderData?: any;
   }
 ): Promise<PaymentDetails> => {
-  console.log("Processing payment for orderId:", orderDetails.orderId);
-  
-  // Check for duplicate payment processing
-  const paymentKey = `${orderDetails.orderId}_payment`;
-  if (processedPayments.has(paymentKey)) {
-    console.log("Payment already processed, preventing duplicate");
-    return Promise.reject(new Error("Payment already being processed"));
-  }
-  
-  // Mark payment as being processed
-  processedPayments.add(paymentKey);
+  console.log("💳 Processing payment for orderId:", orderDetails.orderId);
   
   // Use demo mode if Razorpay is not available or demo mode is enabled
   if (DEMO_MODE || typeof window.Razorpay === 'undefined') {
-    console.log("Using demo payment mode");
+    console.log("🎭 Using demo payment mode");
     return new Promise((resolve) => {
       setTimeout(() => {
         const mockPaymentId = `pay_demo_${orderDetails.orderId.substring(0, 8)}_${Math.random().toString(36).substring(2, 6)}`;
@@ -152,9 +129,9 @@ export const processPayment = (
           deliveryAddress: orderDetails.deliveryAddress
         };
         
-        console.log("Demo payment completed:", paymentDetails);
+        console.log("✅ Demo payment completed:", paymentDetails);
         resolve(paymentDetails);
-      }, 1000);
+      }, 2000); // Simulate processing time
     });
   }
   
@@ -175,7 +152,7 @@ export const processPayment = (
           color: '#3399cc',
         },
         handler: function (response: any) {
-          console.log("Payment successful:", response);
+          console.log("✅ Payment successful:", response);
           const paymentDetails: PaymentDetails = {
             id: orderDetails.razorpayOrderId,
             amount: orderDetails.amount,
@@ -195,9 +172,7 @@ export const processPayment = (
         },
         modal: {
           ondismiss: function () {
-            console.log("Payment modal dismissed by user");
-            // Remove from processed payments to allow retry
-            processedPayments.delete(paymentKey);
+            console.log("❌ Payment modal dismissed by user");
             reject(new Error("Payment cancelled by user"));
           },
         },
@@ -206,26 +181,18 @@ export const processPayment = (
       const razorpay = new window.Razorpay(options);
       
       razorpay.on('payment.failed', function(response: any) {
-        console.error("Razorpay payment failed:", response.error);
-        processedPayments.delete(paymentKey);
+        console.error("❌ Razorpay payment failed:", response.error);
         reject(new Error(`Payment failed: ${response.error.description}`));
       });
       
       razorpay.open();
-      console.log("Razorpay payment window opened");
+      console.log("🎬 Razorpay payment window opened");
       
     } catch (error) {
-      console.error("Error in payment process:", error);
-      processedPayments.delete(paymentKey);
+      console.error("❌ Error in payment process:", error);
       reject(error);
     }
   });
-};
-
-// Function to clear processed payment tracking (useful for cleanup)
-export const clearProcessedPayments = () => {
-  processedPayments.clear();
-  console.log("Cleared processed payments tracking");
 };
 
 // Add this TypeScript declaration to recognize the Razorpay global
