@@ -140,6 +140,7 @@ export default function Order() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    console.log("Starting order submission...");
     setOrderError(null);
 
     if (!productType || !quantity || !deliveryAddress) {
@@ -179,72 +180,69 @@ export default function Order() {
       return;
     }
 
+    setLoading(true);
+    setUploadProgress(10);
+    setProcessingStep("Starting order creation...");
+
     try {
-      setLoading(true);
-      setProcessingStep("Checking for duplicate orders...");
-      setUploadProgress(5);
-      
-      // Check for recent duplicate orders
+      // Check for duplicates first
       const estimatedPrice = calculateEstimatedPrice();
+      setProcessingStep("Checking for duplicate orders...");
+      setUploadProgress(20);
+      
       const duplicateCheck = await checkForRecentDuplicateOrder(
         user.uid,
         userData?.email || user?.email || "customer@example.com",
         estimatedPrice
       );
       
-      if (duplicateCheck.isDuplicate && duplicateCheck.existingOrderId) {
+      if (duplicateCheck.isDuplicate) {
         toast({
           title: "Duplicate Order Detected",
           description: "You have a recent order with the same details. Please check your orders.",
           variant: "destructive",
         });
         setLoading(false);
+        setUploadProgress(0);
+        setProcessingStep("");
         return;
       }
-      
-      setProcessingStep("Processing your order...");
-      
-      // Create customer tracking ID
-      const customerTrackingId = `TRK-${user?.uid.substring(0, 6)}-${generateId(8).toUpperCase()}`;
-      
-      simulateProgress(5, 40, 1000);
 
       // Handle file upload
+      setProcessingStep("Uploading design file...");
+      setUploadProgress(40);
+      
       let fileUrl = "";
       const demoMode = import.meta.env.VITE_RAZORPAY_DEMO_MODE === 'true';
       
       if (demoMode) {
-        console.log("Demo mode - simulating file upload");
-        await new Promise(resolve => setTimeout(resolve, 500));
+        console.log("Demo mode - using local file URL");
         const blob = new Blob([file], { type: file.type });
         fileUrl = URL.createObjectURL(blob);
-        console.log("Created local file URL:", fileUrl);
       } else {
         try {
-          setProcessingStep("Uploading your design file...");
           const fileExtension = file.name.split('.').pop();
           const uniqueFileName = `${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${fileExtension}`;
           const storageRef = ref(storage, `designs/${user?.uid}/${uniqueFileName}`);
           
           const uploadResult = await uploadBytes(storageRef, file);
           fileUrl = await getDownloadURL(uploadResult.ref);
-          console.log("File uploaded successfully:", fileUrl);
         } catch (uploadError) {
-          console.error("Error uploading file:", uploadError);
+          console.error("File upload failed, using local URL:", uploadError);
           const blob = new Blob([file], { type: file.type });
           fileUrl = URL.createObjectURL(blob);
-          console.log("Using local URL instead:", fileUrl);
         }
       }
+
+      // Create order data
+      setProcessingStep("Creating order...");
+      setUploadProgress(60);
       
-      simulateProgress(40, 75, 500);
-      
-      // Get HSN code based on product type
+      const customerTrackingId = `TRK-${user?.uid.substring(0, 6)}-${generateId(8).toUpperCase()}`;
       const hsnCode = hsnCodes[productType as keyof typeof hsnCodes] || "4911";
 
-      setProcessingStep("Creating your order...");
       const orderData = {
-        userId: user?.uid || "demo-user",
+        userId: user?.uid,
         productType,
         quantity: parseInt(quantity),
         specifications,
@@ -258,68 +256,33 @@ export default function Order() {
         hsnCode,
         trackingId: customerTrackingId,
       };
-      
-      simulateProgress(75, 90, 500);
 
-      // Create initial order
+      // Create the order in database
       const orderResult = await createOrder(orderData);
       
       if (!orderResult.success || !orderResult.orderId) {
         throw new Error(orderResult.message || "Failed to create order");
       }
-      
-      setUploadProgress(100);
-      setProcessingStep("Order created successfully. Processing payment...");
-      
-      // Process payment immediately
-      const completeOrderData: SimpleOrderData = {
-        id: orderResult.orderId,
-        ...orderData,
-        status: 'pending_payment',
-        paymentStatus: 'pending',
-        timestamp: Timestamp.now()
-      };
-      
-      await handlePaymentProcess(orderResult.orderId, completeOrderData);
-      
-    } catch (error) {
-      console.error("Error placing order:", error);
-      
-      setOrderError("There was a problem with your order. Please try again.");
-      
-      toast({
-        title: "Error",
-        description: error instanceof Error 
-          ? `There was a problem: ${error.message}`
-          : "There was a problem submitting your order. Please try again.",
-        variant: "destructive",
-      });
-      
-      setLoading(false);
-      setProcessingStep("");
-      setUploadProgress(0);
-    }
-  };
 
-  const handlePaymentProcess = async (orderId: string, orderData: SimpleOrderData) => {
-    try {
-      setProcessingStep("Setting up payment gateway...");
+      console.log("Order created successfully:", orderResult.orderId);
       
+      // Now process payment
+      setProcessingStep("Processing payment...");
+      setUploadProgress(80);
+
       // Create Razorpay order
       const razorpayOrder = await createRazorpayOrder(
-        orderId,
-        orderData.totalAmount,
+        orderResult.orderId,
+        estimatedPrice,
         orderData.customerName,
         orderData.customerEmail
       );
-      
-      setProcessingStep("Processing payment...");
-      
-      // Process the payment
+
+      // Process payment
       const paymentResult = await processPayment({
-        orderId: orderId,
+        orderId: orderResult.orderId,
         razorpayOrderId: razorpayOrder.id,
-        amount: orderData.totalAmount,
+        amount: estimatedPrice,
         currency: "INR",
         customerName: orderData.customerName,
         customerEmail: orderData.customerEmail,
@@ -329,21 +292,33 @@ export default function Order() {
         quantity: orderData.quantity,
         deliveryAddress: orderData.deliveryAddress
       });
-      
-      // Verify payment success and update order
+
+      // Check payment result
       if (paymentResult.status === 'completed' && paymentResult.paymentId) {
-        setProcessingStep("Payment successful! Updating order...");
+        setProcessingStep("Payment successful! Finalizing order...");
+        setUploadProgress(95);
         
         // Update order with payment success
-        await updateOrderAfterPayment(orderId, paymentResult.paymentId);
+        await updateOrderAfterPayment(orderResult.orderId, paymentResult.paymentId);
+        
+        // Create complete order data for invoice
+        const completeOrderData: SimpleOrderData = {
+          id: orderResult.orderId,
+          ...orderData,
+          status: 'received',
+          paymentStatus: 'paid',
+          timestamp: Timestamp.now(),
+          razorpayPaymentId: paymentResult.paymentId,
+          paymentCompletedAt: Timestamp.now(),
+          lastUpdated: Timestamp.now()
+        };
         
         // Generate invoice
-        setProcessingStep("Generating invoice...");
-        await createAndSendInvoice(orderData);
+        await createAndSendInvoice(completeOrderData);
         
-        setProcessingStep("Order completed!");
+        setUploadProgress(100);
+        setProcessingStep("Order completed successfully!");
         setOrderComplete(true);
-        setLoading(false);
         
         toast({
           title: "Order Placed Successfully",
@@ -351,22 +326,25 @@ export default function Order() {
         });
         
       } else {
-        throw new Error("Payment was not successful");
+        throw new Error("Payment was not completed successfully");
       }
       
     } catch (error) {
-      console.error("Payment processing error:", error);
+      console.error("Order submission error:", error);
       
-      setOrderError("Payment processing failed. Your order has been created but payment is pending. You can complete the payment from your dashboard.");
+      setOrderError(error instanceof Error ? error.message : "Failed to process order");
       
       toast({
-        title: "Payment Issue",
-        description: "There was an issue with payment processing. You can complete the payment from your dashboard.",
+        title: "Order Error",
+        description: error instanceof Error ? error.message : "There was a problem processing your order.",
         variant: "destructive",
       });
-      
+    } finally {
       setLoading(false);
-      setProcessingStep("");
+      if (!orderComplete) {
+        setUploadProgress(0);
+        setProcessingStep("");
+      }
     }
   };
 
@@ -379,6 +357,7 @@ export default function Order() {
     setLoading(false);
     setProcessingStep("");
     setUploadProgress(0);
+    setOrderComplete(false);
   };
 
   const estimatedPrice = calculateEstimatedPrice();
