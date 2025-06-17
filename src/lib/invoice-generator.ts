@@ -1,5 +1,4 @@
 
-// src/lib/invoice-generator.ts - Apply these changes to your existing file
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { formatCurrency, formatDate } from './utils';
@@ -19,163 +18,197 @@ export interface InvoiceData {
   totalAmount: number;
   gstNumber?: string;
   hsnCode?: string;
+  trackingId?: string;
 }
 
 export const generateInvoicePDF = async (invoiceData: InvoiceData): Promise<{ blob: Blob; url: string }> => {
   return new Promise((resolve, reject) => {
     try {
-      console.log("Starting PDF generation for invoice:", invoiceData.invoiceId);
+      console.log("🧾 Generating PDF invoice for:", invoiceData.invoiceId);
       
-      // Create a new PDF document (A4 size in mm)
+      // Create a new PDF document
       const doc = new jsPDF({
         orientation: 'portrait',
         unit: 'mm',
         format: 'a4'
       });
       
-      console.log("PDF document created, adding content...");
+      const pageWidth = doc.internal.pageSize.width;
+      const pageHeight = doc.internal.pageSize.height;
       
-      // Add company header
-      doc.setFontSize(20);
-      doc.text('Micro UV Printers', doc.internal.pageSize.width / 2, 20, { align: 'center' });
+      // Header - Company Info
+      doc.setFontSize(22);
+      doc.setFont("helvetica", "bold");
+      doc.text('Micro UV Printers', pageWidth / 2, 25, { align: 'center' });
+      
       doc.setFontSize(10);
-      doc.text('High Quality UV Printing Solutions', doc.internal.pageSize.width / 2, 25, { align: 'center' });
+      doc.setFont("helvetica", "normal");
+      doc.text('High Quality UV Printing Solutions', pageWidth / 2, 30, { align: 'center' });
+      doc.text('123 Print Avenue, Industrial Area, Delhi, India - 110001', pageWidth / 2, 35, { align: 'center' });
+      doc.text('Phone: +91 98765 43210 | Email: info@microuvprinters.com', pageWidth / 2, 40, { align: 'center' });
       
-      // Company details (right aligned)
-      doc.setFontSize(8);
-      const rightMargin = doc.internal.pageSize.width - 20;
-      doc.text('Micro UV Printers', rightMargin, 35, { align: 'right' });
-      doc.text('123 Print Avenue, Industrial Area', rightMargin, 39, { align: 'right' });
-      doc.text('Delhi, India - 110001', rightMargin, 43, { align: 'right' });
-      doc.text('GSTIN: 06ABCDE1234F1Z5', rightMargin, 47, { align: 'right' });
-      doc.text('Contact: +91 98765 43210', rightMargin, 51, { align: 'right' });
-      
-      // Invoice title
+      // Invoice Title
       doc.setFontSize(18);
-      doc.text('TAX INVOICE', doc.internal.pageSize.width / 2, 60, { align: 'center' });
+      doc.setFont("helvetica", "bold");
+      doc.text('INVOICE', pageWidth / 2, 55, { align: 'center' });
       
-      console.log("Adding invoice details...");
+      // Invoice Details Box
+      doc.setDrawColor(200, 200, 200);
+      doc.rect(20, 65, pageWidth - 40, 30);
       
-      // Add a horizontal line
-      doc.setDrawColor(170, 170, 170);
-      doc.line(20, 65, doc.internal.pageSize.width - 20, 65);
+      doc.setFontSize(11);
+      doc.setFont("helvetica", "bold");
+      doc.text(`Invoice ID: ${invoiceData.invoiceId}`, 25, 75);
+      doc.text(`Date: ${formatDate(invoiceData.orderDate)}`, 25, 82);
+      doc.text(`Order ID: ${invoiceData.orderId}`, 25, 89);
       
-      // Invoice details
-      doc.setFontSize(10);
-      doc.text(`Invoice Number: ${invoiceData.invoiceId}`, 20, 75);
-      doc.text(`Date: ${formatDate(invoiceData.orderDate)}`, rightMargin, 75, { align: 'right' });
-      doc.text(`Order Number: ${invoiceData.orderId}`, 20, 80);
-      doc.text('Payment Status: PAID', rightMargin, 80, { align: 'right' });
+      if (invoiceData.trackingId) {
+        doc.text(`Tracking ID: ${invoiceData.trackingId}`, pageWidth - 25, 75, { align: 'right' });
+      }
+      doc.text('Payment Status: PAID', pageWidth - 25, 82, { align: 'right' });
+      doc.text('Order Status: Confirmed', pageWidth - 25, 89, { align: 'right' });
       
-      // Customer information
+      // Customer Information
       doc.setFontSize(12);
-      doc.text('Bill To:', 20, 90);
+      doc.setFont("helvetica", "bold");
+      doc.text('Bill To:', 20, 110);
+      
       doc.setFontSize(10);
-      doc.text(`Name: ${invoiceData.customerName}`, 20, 95);
-      doc.text(`Email: ${invoiceData.customerEmail}`, 20, 100);
-      doc.text(`Address: ${invoiceData.customerAddress}`, 20, 105);
+      doc.setFont("helvetica", "normal");
+      const customerInfo = [
+        `Name: ${invoiceData.customerName}`,
+        `Email: ${invoiceData.customerEmail}`,
+        `Address: ${invoiceData.customerAddress}`
+      ];
       
       if (invoiceData.gstNumber) {
-        doc.text(`GSTIN: ${invoiceData.gstNumber}`, 20, 110);
+        customerInfo.push(`GSTIN: ${invoiceData.gstNumber}`);
       }
       
-      console.log("Adding product table...");
+      let yPosition = 118;
+      customerInfo.forEach(info => {
+        doc.text(info, 20, yPosition);
+        yPosition += 6;
+      });
       
-      // Product table
-      const tableStartY = invoiceData.gstNumber ? 120 : 115;
+      // Products Table
+      const tableStartY = yPosition + 10;
       
-      try {
-        autoTable(doc, {
-          startY: tableStartY,
-          head: [['Item', 'Description', 'HSN/SAC', 'Qty', 'Price', 'Amount']],
-          body: invoiceData.products.map((item, index) => [
-            index + 1,
-            item.name,
-            invoiceData.hsnCode || '4911',  // Default HSN code for printing items
-            item.quantity,
-            formatCurrency(item.price).replace('₹', '').trim(),
-            formatCurrency(item.price * item.quantity).replace('₹', '').trim()
-          ]),
-          theme: 'grid',
-          headStyles: { fillColor: [80, 80, 80] },
-          margin: { left: 20, right: 20 },
-          columnStyles: {
-            0: { cellWidth: 10 },
-            1: { cellWidth: 60 },
-            2: { cellWidth: 20 },
-            3: { cellWidth: 15, halign: 'center' },
-            4: { cellWidth: 25, halign: 'right' },
-            5: { cellWidth: 25, halign: 'right' }
-          }
-        });
-      } catch (tableError) {
-        console.error("Error creating table:", tableError);
-        // Continue with a simplified table if there's an error
-        doc.text("Product: " + invoiceData.products[0].name, 20, tableStartY + 10);
-        doc.text("Quantity: " + invoiceData.products[0].quantity, 20, tableStartY + 20);
-        doc.text("Price: " + formatCurrency(invoiceData.products[0].price), 20, tableStartY + 30);
-      }
+      const tableData = invoiceData.products.map((item, index) => [
+        (index + 1).toString(),
+        item.name,
+        invoiceData.hsnCode || '4911',
+        item.quantity.toString(),
+        formatCurrency(item.price).replace('₹', '').trim(),
+        formatCurrency(item.price * item.quantity).replace('₹', '').trim()
+      ]);
       
-      console.log("Adding invoice summary...");
+      autoTable(doc, {
+        startY: tableStartY,
+        head: [['#', 'Description', 'HSN/SAC', 'Qty', 'Rate (₹)', 'Amount (₹)']],
+        body: tableData,
+        theme: 'grid',
+        headStyles: { 
+          fillColor: [41, 128, 185],
+          textColor: 255,
+          fontStyle: 'bold'
+        },
+        margin: { left: 20, right: 20 },
+        columnStyles: {
+          0: { cellWidth: 15, halign: 'center' },
+          1: { cellWidth: 70 },
+          2: { cellWidth: 20, halign: 'center' },
+          3: { cellWidth: 15, halign: 'center' },
+          4: { cellWidth: 25, halign: 'right' },
+          5: { cellWidth: 25, halign: 'right' }
+        }
+      });
+      
+      // Summary calculations
+      const subtotal = invoiceData.totalAmount;
+      const cgst = subtotal * 0.09;
+      const sgst = subtotal * 0.09;
+      const total = subtotal + cgst + sgst;
       
       // Get the ending Y position of the table
-      const tableEndY = (doc as any).lastAutoTable?.finalY + 10 || (tableStartY + 40);
+      const tableEndY = (doc as any).lastAutoTable?.finalY + 10 || (tableStartY + 60);
       
-      // Summary
+      // Summary Box
+      const summaryStartY = tableEndY;
+      doc.setDrawColor(200, 200, 200);
+      doc.rect(pageWidth - 80, summaryStartY, 60, 35);
+      
       doc.setFontSize(10);
-      doc.text('Subtotal:', 130, tableEndY);
-      doc.text(formatCurrency(invoiceData.totalAmount).replace('₹', '').trim(), rightMargin, tableEndY, { align: 'right' });
+      doc.setFont("helvetica", "normal");
       
-      doc.text('CGST (9%):', 130, tableEndY + 5);
-      doc.text(formatCurrency(invoiceData.totalAmount * 0.09).replace('₹', '').trim(), rightMargin, tableEndY + 5, { align: 'right' });
+      doc.text('Subtotal:', pageWidth - 75, summaryStartY + 8);
+      doc.text(`₹${subtotal.toFixed(2)}`, pageWidth - 25, summaryStartY + 8, { align: 'right' });
       
-      doc.text('SGST (9%):', 130, tableEndY + 10);
-      doc.text(formatCurrency(invoiceData.totalAmount * 0.09).replace('₹', '').trim(), rightMargin, tableEndY + 10, { align: 'right' });
+      doc.text('CGST (9%):', pageWidth - 75, summaryStartY + 15);
+      doc.text(`₹${cgst.toFixed(2)}`, pageWidth - 25, summaryStartY + 15, { align: 'right' });
       
-      doc.setFontSize(12);
-      doc.text('Total:', 130, tableEndY + 17);
-      doc.text(formatCurrency(invoiceData.totalAmount * 1.18).replace('₹', '').trim(), rightMargin, tableEndY + 17, { align: 'right' });
+      doc.text('SGST (9%):', pageWidth - 75, summaryStartY + 22);
+      doc.text(`₹${sgst.toFixed(2)}`, pageWidth - 25, summaryStartY + 22, { align: 'right' });
       
-      // Terms and notes
-      doc.setFontSize(10);
-      doc.text('Terms & Notes', 20, tableEndY + 30);
+      doc.setFont("helvetica", "bold");
+      doc.text('Total:', pageWidth - 75, summaryStartY + 30);
+      doc.text(`₹${total.toFixed(2)}`, pageWidth - 25, summaryStartY + 30, { align: 'right' });
       
-      doc.setFontSize(8);
-      doc.text('1. Payment is due within 15 days', 20, tableEndY + 35);
-      doc.text('2. Please make payment to bank account: HDFC Bank - 12345678901234', 20, tableEndY + 40);
-      doc.text('3. This is a computer-generated invoice and does not require a signature', 20, tableEndY + 45);
+      // Terms and Conditions
+      const termsY = summaryStartY + 50;
+      doc.setFontSize(11);
+      doc.setFont("helvetica", "bold");
+      doc.text('Terms & Conditions:', 20, termsY);
+      
+      doc.setFontSize(9);
+      doc.setFont("helvetica", "normal");
+      const terms = [
+        '• Payment has been received and confirmed.',
+        '• This invoice is computer generated and does not require a signature.',
+        '• For any queries, please contact our support team.',
+        '• Delivery will be initiated within 2-3 business days.',
+        '• Quality guarantee: 100% satisfaction or money back.'
+      ];
+      
+      let termsYPos = termsY + 8;
+      terms.forEach(term => {
+        doc.text(term, 20, termsYPos);
+        termsYPos += 5;
+      });
       
       // Footer
-      const footerY = doc.internal.pageSize.height - 20;
+      const footerY = pageHeight - 20;
       doc.setFontSize(8);
-      doc.text('Thank you for your business!', doc.internal.pageSize.width / 2, footerY - 10, { align: 'center' });
-      doc.text('For any queries, please contact: support@microuvprinters.com', doc.internal.pageSize.width / 2, footerY - 5, { align: 'center' });
+      doc.setFont("helvetica", "italic");
+      doc.text('Thank you for choosing Micro UV Printers!', pageWidth / 2, footerY - 10, { align: 'center' });
+      doc.text('For support: support@microuvprinters.com | +91 98765 43210', pageWidth / 2, footerY - 5, { align: 'center' });
       
-      console.log("Generating final PDF blob...");
-      
-      // Convert to blob
+      // Generate PDF
       const pdfBlob = doc.output('blob');
       const pdfUrl = URL.createObjectURL(pdfBlob);
       
-      console.log("PDF blob created successfully:", pdfBlob.size, "bytes");
+      console.log("✅ PDF invoice generated successfully:", pdfBlob.size, "bytes");
       resolve({ blob: pdfBlob, url: pdfUrl });
+      
     } catch (error) {
-      console.error('Error generating PDF:', error);
-      // Create a simple fallback PDF if the main generation fails
-      try {
-        console.log("Creating fallback PDF due to error...");
-        const fallbackDoc = new jsPDF();
-        fallbackDoc.text('Invoice #' + invoiceData.invoiceId, 10, 10);
-        fallbackDoc.text('There was an error generating the complete invoice.', 10, 20);
-        fallbackDoc.text('Please contact support.', 10, 30);
-        const fallbackBlob = fallbackDoc.output('blob');
-        const fallbackUrl = URL.createObjectURL(fallbackBlob);
-        console.log("Fallback PDF created:", fallbackBlob.size, "bytes");
-        resolve({ blob: fallbackBlob, url: fallbackUrl });
-      } catch (fallbackError) {
-        console.error("Even fallback PDF failed:", fallbackError);
-        reject(new Error("PDF generation failed completely"));
-      }
+      console.error('❌ Error generating PDF invoice:', error);
+      reject(error);
     }
   });
+};
+
+export const downloadInvoice = (invoiceData: InvoiceData) => {
+  generateInvoicePDF(invoiceData)
+    .then(({ url }) => {
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `Invoice_${invoiceData.invoiceId}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    })
+    .catch(error => {
+      console.error('Error downloading invoice:', error);
+    });
 };

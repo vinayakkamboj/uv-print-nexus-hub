@@ -15,6 +15,7 @@ import { ShoppingBag, FileText, Settings, Clock, Package, CheckCircle, Truck, Cr
 import { getUserOrders, SimpleOrderData } from "@/lib/invoice-service";
 import { initializeRazorpay, createRazorpayOrder, processPayment } from "@/lib/payment-service";
 import { updateOrderAfterPayment } from "@/lib/invoice-service";
+import { downloadInvoice } from "@/lib/invoice-generator";
 
 export default function Dashboard() {
   const { userData, user, updateUserProfile } = useAuth();
@@ -108,6 +109,44 @@ export default function Dashboard() {
     }
   };
 
+  const handleDownloadInvoice = (order: SimpleOrderData) => {
+    if (!order.id || order.paymentStatus !== 'paid') {
+      toast({
+        title: "Invoice Not Available",
+        description: "Invoice can only be downloaded for paid orders.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    console.log("📄 Downloading invoice for order:", order.id);
+    
+    const invoiceData = {
+      invoiceId: order.invoiceId || `INV-${order.trackingId}-${Date.now().toString().slice(-4)}`,
+      orderId: order.id,
+      orderDate: order.timestamp?.toDate ? order.timestamp.toDate() : new Date(),
+      customerName: order.customerName,
+      customerEmail: order.customerEmail,
+      customerAddress: order.deliveryAddress,
+      products: [{
+        name: `${order.productType} Printing (${order.quantity} units)`,
+        quantity: order.quantity,
+        price: order.totalAmount
+      }],
+      totalAmount: order.totalAmount,
+      gstNumber: order.gstNumber,
+      hsnCode: order.hsnCode,
+      trackingId: order.trackingId
+    };
+
+    downloadInvoice(invoiceData);
+    
+    toast({
+      title: "Invoice Downloaded",
+      description: "Your invoice PDF has been downloaded successfully.",
+    });
+  };
+
   const handleRetryPayment = async (order: SimpleOrderData) => {
     if (!userData || processingPayment || !order.id) return;
     
@@ -143,7 +182,6 @@ export default function Dashboard() {
       });
       
       if (paymentResult.status === 'completed' && paymentResult.paymentId) {
-        // Update order in database
         await updateOrderAfterPayment(order.id, paymentResult.paymentId);
         
         toast({
@@ -151,7 +189,6 @@ export default function Dashboard() {
           description: "Your payment has been successfully processed.",
         });
         
-        // Refresh orders
         fetchUserOrders();
       } else {
         toast({
@@ -385,6 +422,7 @@ export default function Dashboard() {
                         <th className="text-left py-3 px-4 font-medium">Date</th>
                         <th className="text-left py-3 px-4 font-medium">Status</th>
                         <th className="text-left py-3 px-4 font-medium">Amount</th>
+                        <th className="text-left py-3 px-4 font-medium">Invoice</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -419,6 +457,17 @@ export default function Dashboard() {
                               </div>
                             </td>
                             <td className="py-3 px-4">{formatCurrency(order.totalAmount)}</td>
+                            <td className="py-3 px-4">
+                              <Button 
+                                size="sm" 
+                                variant="outline" 
+                                onClick={() => handleDownloadInvoice(order)}
+                                className="text-xs"
+                              >
+                                <Download className="h-3 w-3 mr-1" />
+                                Download
+                              </Button>
+                            </td>
                           </tr>
                         ))}
                     </tbody>
