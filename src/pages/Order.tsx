@@ -1,5 +1,5 @@
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
@@ -25,11 +25,9 @@ import {
 } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import { generateId, isValidGSTIN } from "@/lib/utils";
-import { AlertCircle, Upload, Download } from "lucide-react";
-import { createOrder, updateOrderAfterPayment, createAndSendInvoice, SimpleOrderData } from "@/lib/invoice-service";
+import { AlertCircle, Upload } from "lucide-react";
+import { createOrder, updateOrderAfterPayment } from "@/lib/invoice-service";
 import { initializeRazorpay, createRazorpayOrder, processPayment } from "@/lib/payment-service";
-import { Progress } from "@/components/ui/progress";
-import { Timestamp } from "firebase/firestore";
 
 const productTypes = [
   { value: "sticker", label: "Stickers & Labels" },
@@ -72,13 +70,7 @@ export default function Order() {
   }, [userData]);
 
   useEffect(() => {
-    initializeRazorpay()
-      .then((success) => {
-        console.log("Razorpay initialization result:", success);
-      })
-      .catch(error => {
-        console.error("Error initializing Razorpay:", error);
-      });
+    initializeRazorpay();
   }, []);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -114,14 +106,30 @@ export default function Order() {
     return basePrice * 3;
   };
 
+  const uploadFileToStorage = async (file: File, userId: string): Promise<string> => {
+    try {
+      const fileExtension = file.name.split('.').pop();
+      const uniqueFileName = `${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${fileExtension}`;
+      const storageRef = ref(storage, `designs/${userId}/${uniqueFileName}`);
+      
+      console.log("Uploading file to Firebase Storage...");
+      const uploadResult = await uploadBytes(storageRef, file);
+      const downloadURL = await getDownloadURL(uploadResult.ref);
+      console.log("File uploaded successfully:", downloadURL);
+      
+      return downloadURL;
+    } catch (error) {
+      console.error("File upload failed:", error);
+      throw new Error("Failed to upload file");
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     console.log("🚀 Starting order submission...");
 
-    // Basic validation
     if (!productType || !quantity || !deliveryAddress || !file || !user) {
-      console.log("❌ Validation failed");
       toast({
         title: "Error",
         description: "Please fill in all required fields.",
@@ -131,7 +139,6 @@ export default function Order() {
     }
 
     if (gstNumber && !isValidGSTIN(gstNumber)) {
-      console.log("❌ Invalid GST number");
       toast({
         title: "Error",
         description: "Please enter a valid GST number.",
@@ -141,44 +148,22 @@ export default function Order() {
     }
 
     setLoading(true);
-    setProcessingStep("Starting order creation...");
 
     try {
       const estimatedPrice = calculateEstimatedPrice();
       const customerTrackingId = `TRK-${user.uid.substring(0, 6)}-${generateId(8).toUpperCase()}`;
       const hsnCode = hsnCodes[productType as keyof typeof hsnCodes] || "4911";
 
-      console.log("📦 Step 1: Preparing order data");
-      setProcessingStep("Preparing order data...");
+      // Step 1: Upload file first
+      setProcessingStep("Uploading design file...");
+      console.log("📁 Uploading file...");
       
-      // Simple demo mode check - just simulate payment if demo mode
-      const demoMode = import.meta.env.VITE_RAZORPAY_DEMO_MODE === 'true';
-      
-      if (demoMode) {
-        console.log("🎭 Demo mode - simulating order creation");
-        setProcessingStep("Demo mode: Processing order...");
-        
-        // Simulate processing time
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        
-        setProcessingStep("Demo mode: Payment completed!");
-        
-        toast({
-          title: "Demo Order Completed",
-          description: "This is a demo order. In production, this would process the actual payment.",
-        });
-        
-        // Simulate success and redirect
-        setTimeout(() => {
-          navigate("/dashboard");
-        }, 1500);
-        
-        return;
-      }
+      const fileUrl = await uploadFileToStorage(file, user.uid);
+      console.log("✅ File uploaded successfully");
 
-      // Real order processing
-      console.log("📁 Step 2: Creating order");
+      // Step 2: Create order
       setProcessingStep("Creating order...");
+      console.log("📦 Creating order...");
 
       const orderData = {
         userId: user.uid,
@@ -187,7 +172,7 @@ export default function Order() {
         specifications,
         deliveryAddress,
         gstNumber,
-        fileUrl: "temp-url", // Will be updated after file upload
+        fileUrl,
         fileName: file.name,
         totalAmount: estimatedPrice,
         customerName: userData?.name || user?.displayName || "Customer",
@@ -196,7 +181,6 @@ export default function Order() {
         trackingId: customerTrackingId,
       };
 
-      console.log("Creating order with data:", orderData);
       const orderResult = await createOrder(orderData);
       
       if (!orderResult.success || !orderResult.orderId) {
@@ -204,28 +188,10 @@ export default function Order() {
       }
 
       console.log("✅ Order created successfully:", orderResult.orderId);
-      
-      console.log("📁 Step 3: Uploading file");
-      setProcessingStep("Uploading design file...");
-      
-      // Handle file upload
-      let fileUrl = "";
-      try {
-        const fileExtension = file.name.split('.').pop();
-        const uniqueFileName = `${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${fileExtension}`;
-        const storageRef = ref(storage, `designs/${user.uid}/${uniqueFileName}`);
-        
-        const uploadResult = await uploadBytes(storageRef, file);
-        fileUrl = await getDownloadURL(uploadResult.ref);
-        console.log("✅ File uploaded successfully");
-      } catch (uploadError) {
-        console.error("File upload failed:", uploadError);
-        // Continue without file for now
-        fileUrl = "upload-failed";
-      }
 
-      console.log("💳 Step 4: Processing payment");
+      // Step 3: Process payment
       setProcessingStep("Processing payment...");
+      console.log("💳 Processing payment...");
 
       const razorpayOrder = await createRazorpayOrder(
         orderResult.orderId,
@@ -249,12 +215,10 @@ export default function Order() {
       });
 
       if (paymentResult.status === 'completed' && paymentResult.paymentId) {
-        console.log("✅ Payment successful, finalizing order");
+        console.log("✅ Payment successful");
         setProcessingStep("Payment successful! Finalizing order...");
         
         await updateOrderAfterPayment(orderResult.orderId, paymentResult.paymentId);
-        
-        setProcessingStep("Order completed successfully!");
         
         toast({
           title: "Order Placed Successfully",
