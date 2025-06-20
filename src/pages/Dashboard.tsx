@@ -43,17 +43,24 @@ export default function Dashboard() {
   }, [userData]);
 
   const fetchUserOrders = async () => {
-    if (!userData?.uid && !user?.uid) {
+    const currentUserId = userData?.uid || user?.uid;
+    
+    if (!currentUserId) {
       console.log("❌ No user ID available, skipping order fetch");
+      console.log("👤 userData:", userData);
+      console.log("👤 user:", user);
       setLoading(false);
       return;
     }
     
     try {
       setLoading(true);
-      const userId = userData?.uid || user?.uid;
-      console.log("🔄 Fetching orders for user:", userId);
-      console.log("👤 User data:", { userData, user });
+      console.log("🔄 Fetching orders for user:", currentUserId);
+      console.log("👤 User context:", { 
+        userDataUid: userData?.uid, 
+        userUid: user?.uid,
+        userEmail: userData?.email || user?.email 
+      });
       
       // Test database connection first
       const dbConnected = await testDatabaseConnection();
@@ -61,29 +68,48 @@ export default function Dashboard() {
         console.error("❌ Database connection failed");
         toast({
           title: "Database Error",
-          description: "Unable to connect to database. Please refresh the page.",
+          description: "Unable to connect to database. Please check Firebase permissions.",
           variant: "destructive",
         });
         setLoading(false);
         return;
       }
       
-      const ordersData = await getUserOrders(userId!);
+      console.log("✅ Database connection successful, fetching orders...");
+      const ordersData = await getUserOrders(currentUserId);
       console.log("✅ Fetched orders:", ordersData);
       
       setOrders(ordersData);
-      console.log(`📊 Loaded ${ordersData.length} orders for user ${userId}`);
+      console.log(`📊 Loaded ${ordersData.length} orders for user ${currentUserId}`);
       
       if (ordersData.length === 0) {
         console.log("ℹ️ No orders found for this user");
+        console.log("🔍 Possible reasons:");
+        console.log("  - User hasn't placed any orders yet");
+        console.log("  - Firebase security rules blocking access");
+        console.log("  - Orders were created with different userId");
+      } else {
+        console.log("📋 Order summary:");
+        ordersData.forEach((order, index) => {
+          console.log(`  ${index + 1}. ${order.trackingId} - ${order.status} - ${order.paymentStatus}`);
+        });
       }
       
     } catch (error) {
       console.error("❌ Error fetching user orders:", error);
       console.error("❌ Error details:", error instanceof Error ? error.message : "Unknown error");
+      
+      let errorMessage = "Failed to load your orders. ";
+      
+      if (error instanceof Error && error.message.includes("permission")) {
+        errorMessage += "Database permission error. Please contact support.";
+      } else {
+        errorMessage += "Please refresh the page.";
+      }
+      
       toast({
         title: "Error",
-        description: "Failed to load your orders. Please refresh the page.",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
@@ -96,11 +122,22 @@ export default function Dashboard() {
     console.log("👤 Current userData:", userData);
     console.log("👤 Current user:", user);
     
-    if (userData?.uid || user?.uid) {
+    const currentUserId = userData?.uid || user?.uid;
+    
+    if (currentUserId) {
+      console.log("✅ User authenticated, fetching orders for:", currentUserId);
       fetchUserOrders();
     } else {
       console.log("⏳ Waiting for user authentication...");
-      setLoading(false);
+      // Set a timeout to wait for auth state
+      const timeout = setTimeout(() => {
+        if (!userData?.uid && !user?.uid) {
+          console.log("❌ No user authentication after timeout");
+        }
+        setLoading(false);
+      }, 3000);
+      
+      return () => clearTimeout(timeout);
     }
   }, [userData, user]);
 
@@ -378,14 +415,16 @@ export default function Dashboard() {
   return (
     <div className="container-custom py-12">
       <h1 className="text-3xl font-bold mb-2">Dashboard</h1>
-      <p className="text-gray-600 mb-8">Welcome back, {userData?.name || "User"}</p>
+      <p className="text-gray-600 mb-8">Welcome back, {userData?.name || user?.displayName || "User"}</p>
 
-      {/* Debug info for development */}
+      {/* Enhanced Debug info for development */}
       {process.env.NODE_ENV === 'development' && (
         <div className="mb-6 p-4 bg-gray-100 rounded-lg text-sm">
           <h3 className="font-bold mb-2">Debug Information:</h3>
-          <p><strong>User ID:</strong> {user?.uid || 'Not available'}</p>
-          <p><strong>UserData ID:</strong> {userData?.uid || 'Not available'}</p>
+          <p><strong>User ID (auth):</strong> {user?.uid || 'Not available'}</p>
+          <p><strong>User ID (userData):</strong> {userData?.uid || 'Not available'}</p>
+          <p><strong>User Email:</strong> {userData?.email || user?.email || 'Not available'}</p>
+          <p><strong>User Name:</strong> {userData?.name || user?.displayName || 'Not available'}</p>
           <p><strong>Total Orders:</strong> {orders.length}</p>
           <p><strong>Pending Orders:</strong> {getPendingOrders().length}</p>
           <p><strong>My Orders:</strong> {getMyOrders().length}</p>
@@ -393,7 +432,16 @@ export default function Dashboard() {
           {orders.length > 0 && (
             <div className="mt-2">
               <p><strong>Sample Order:</strong></p>
-              <pre className="text-xs">{JSON.stringify(orders[0], null, 2)}</pre>
+              <pre className="text-xs overflow-auto max-h-32">
+                {JSON.stringify({
+                  id: orders[0].id,
+                  userId: orders[0].userId,
+                  trackingId: orders[0].trackingId,
+                  status: orders[0].status,
+                  paymentStatus: orders[0].paymentStatus,
+                  totalAmount: orders[0].totalAmount
+                }, null, 2)}
+              </pre>
             </div>
           )}
         </div>

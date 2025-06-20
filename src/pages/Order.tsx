@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -150,7 +149,10 @@ export default function Order() {
     }
     
     console.log("🚀 Starting order submission...");
-    console.log("👤 User context:", { user, userData });
+    console.log("👤 User context:", { 
+      user: user ? { uid: user.uid, email: user.email } : null, 
+      userData: userData ? { uid: userData.uid, email: userData.email, name: userData.name } : null 
+    });
 
     // Validate user authentication
     if (!user || !userData) {
@@ -197,7 +199,8 @@ export default function Order() {
         customerTrackingId,
         hsnCode,
         userId: user.uid,
-        userEmail: userData.email
+        userEmail: userData.email || user.email,
+        userName: userData.name || user.displayName
       });
 
       // Step 1: Upload file using mock upload (bypasses CORS issues)
@@ -207,12 +210,12 @@ export default function Order() {
       const fileUrl = await mockFileUpload(file, user.uid);
       console.log("✅ File uploaded successfully");
 
-      // Step 2: Create order
+      // Step 2: Create order with proper user data
       setProcessingStep("Creating order...");
       console.log("📦 Creating order...");
 
       const orderData = {
-        userId: user.uid,
+        userId: user.uid, // Ensure this matches the authenticated user
         productType,
         quantity: parseInt(quantity),
         specifications,
@@ -228,6 +231,11 @@ export default function Order() {
       };
 
       console.log("📤 Submitting order data:", orderData);
+      console.log("🔍 User ID verification:", {
+        orderUserId: orderData.userId,
+        authUserId: user.uid,
+        match: orderData.userId === user.uid
+      });
 
       const orderResult = await createOrder(orderData);
       
@@ -294,9 +302,10 @@ export default function Order() {
             description: "Your order has been received and payment processed. Check 'My Orders' to view details.",
           });
           
+          // Add delay before navigation to ensure user sees success message
           setTimeout(() => {
             navigate("/dashboard");
-          }, 1500);
+          }, 2000);
         } else {
           console.error("❌ Failed to finalize order:", updateResult.message);
           toast({
@@ -314,7 +323,15 @@ export default function Order() {
       console.error("❌ Order submission error:", error);
       console.error("❌ Error stack:", error instanceof Error ? error.stack : "No stack trace");
       
-      const errorMessage = error instanceof Error ? error.message : "Failed to process order";
+      let errorMessage = "Failed to process order";
+      
+      if (error instanceof Error) {
+        if (error.message.includes("permission")) {
+          errorMessage = "Database permission error. Please contact support.";
+        } else {
+          errorMessage = error.message;
+        }
+      }
       
       toast({
         title: "Order Error",
