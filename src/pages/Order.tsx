@@ -121,6 +121,12 @@ export default function Order() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    // Prevent multiple submissions
+    if (loading) {
+      console.log("⚠️ Order already being processed, ignoring submission");
+      return;
+    }
+    
     console.log("🚀 Starting order submission...");
 
     if (!productType || !quantity || !deliveryAddress || !file || !user) {
@@ -183,9 +189,18 @@ export default function Order() {
 
       console.log("✅ Order created successfully:", orderResult.orderId);
 
-      // Step 3: Process payment
-      setProcessingStep("Processing payment...");
-      console.log("💳 Processing payment...");
+      // Step 3: Initialize Razorpay
+      setProcessingStep("Initializing payment gateway...");
+      console.log("💳 Initializing Razorpay...");
+      
+      const razorpayLoaded = await initializeRazorpay();
+      if (!razorpayLoaded) {
+        throw new Error("Failed to load payment gateway");
+      }
+
+      // Step 4: Create Razorpay order
+      setProcessingStep("Creating payment order...");
+      console.log("💳 Creating Razorpay order...");
 
       const razorpayOrder = await createRazorpayOrder(
         orderResult.orderId,
@@ -193,6 +208,10 @@ export default function Order() {
         orderData.customerName,
         orderData.customerEmail
       );
+
+      // Step 5: Process payment
+      setProcessingStep("Opening payment gateway...");
+      console.log("💳 Processing payment...");
 
       const paymentResult = await processPayment({
         orderId: orderResult.orderId,
