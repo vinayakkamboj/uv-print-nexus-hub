@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -23,7 +24,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { generateId, isValidGSTIN } from "@/lib/utils";
 import { AlertCircle, Upload } from "lucide-react";
-import { createOrder, updateOrderAfterPayment } from "@/lib/invoice-service";
+import { createOrder, updateOrderAfterPayment, testDatabaseConnection } from "@/lib/invoice-service";
 import { initializeRazorpay, createRazorpayOrder, processPayment } from "@/lib/payment-service";
 
 const productTypes = [
@@ -67,8 +68,29 @@ export default function Order() {
   }, [userData]);
 
   useEffect(() => {
-    initializeRazorpay();
-  }, []);
+    const initializeComponents = async () => {
+      console.log("🔄 Initializing components...");
+      
+      // Test database connection
+      const dbConnected = await testDatabaseConnection();
+      if (!dbConnected) {
+        toast({
+          title: "Database Connection Error",
+          description: "Unable to connect to database. Please try refreshing the page.",
+          variant: "destructive",
+        });
+      }
+      
+      // Initialize Razorpay
+      await initializeRazorpay();
+      
+      // Log current user data for debugging
+      console.log("👤 Current user:", user);
+      console.log("📊 Current userData:", userData);
+    };
+    
+    initializeComponents();
+  }, [user, userData, toast]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -128,10 +150,25 @@ export default function Order() {
     }
     
     console.log("🚀 Starting order submission...");
+    console.log("👤 User context:", { user, userData });
 
-    if (!productType || !quantity || !deliveryAddress || !file || !user) {
+    // Validate user authentication
+    if (!user || !userData) {
+      console.error("❌ User not authenticated");
       toast({
-        title: "Error",
+        title: "Authentication Error",
+        description: "Please log in to place an order.",
+        variant: "destructive",
+      });
+      navigate("/login");
+      return;
+    }
+
+    // Validate form data
+    if (!productType || !quantity || !deliveryAddress || !file) {
+      console.error("❌ Missing required fields");
+      toast({
+        title: "Validation Error",
         description: "Please fill in all required fields.",
         variant: "destructive",
       });
@@ -139,8 +176,9 @@ export default function Order() {
     }
 
     if (gstNumber && !isValidGSTIN(gstNumber)) {
+      console.error("❌ Invalid GST number");
       toast({
-        title: "Error",
+        title: "Validation Error",
         description: "Please enter a valid GST number.",
         variant: "destructive",
       });
@@ -153,6 +191,14 @@ export default function Order() {
       const estimatedPrice = calculateEstimatedPrice();
       const customerTrackingId = `TRK-${user.uid.substring(0, 6)}-${generateId(8).toUpperCase()}`;
       const hsnCode = hsnCodes[productType as keyof typeof hsnCodes] || "4911";
+
+      console.log("📊 Order details:", {
+        estimatedPrice,
+        customerTrackingId,
+        hsnCode,
+        userId: user.uid,
+        userEmail: userData.email
+      });
 
       // Step 1: Upload file using mock upload (bypasses CORS issues)
       setProcessingStep("Uploading design file...");
@@ -181,9 +227,12 @@ export default function Order() {
         trackingId: customerTrackingId,
       };
 
+      console.log("📤 Submitting order data:", orderData);
+
       const orderResult = await createOrder(orderData);
       
       if (!orderResult.success || !orderResult.orderId) {
+        console.error("❌ Order creation failed:", orderResult.message);
         throw new Error(orderResult.message || "Failed to create order");
       }
 
@@ -209,6 +258,8 @@ export default function Order() {
         orderData.customerEmail
       );
 
+      console.log("✅ Razorpay order created:", razorpayOrder);
+
       // Step 5: Process payment
       setProcessingStep("Opening payment gateway...");
       console.log("💳 Processing payment...");
@@ -227,20 +278,33 @@ export default function Order() {
         deliveryAddress: orderData.deliveryAddress
       });
 
+      console.log("💳 Payment result:", paymentResult);
+
       if (paymentResult.status === 'completed' && paymentResult.paymentId) {
         console.log("✅ Payment successful");
         setProcessingStep("Payment successful! Finalizing order...");
         
-        await updateOrderAfterPayment(orderResult.orderId, paymentResult.paymentId);
+        const updateResult = await updateOrderAfterPayment(orderResult.orderId, paymentResult.paymentId);
         
-        toast({
-          title: "Order Placed Successfully",
-          description: "Your order has been received and payment processed. Check 'My Orders' to view details.",
-        });
-        
-        setTimeout(() => {
-          navigate("/dashboard");
-        }, 1500);
+        if (updateResult.success) {
+          console.log("✅ Order finalized successfully");
+          
+          toast({
+            title: "Order Placed Successfully",
+            description: "Your order has been received and payment processed. Check 'My Orders' to view details.",
+          });
+          
+          setTimeout(() => {
+            navigate("/dashboard");
+          }, 1500);
+        } else {
+          console.error("❌ Failed to finalize order:", updateResult.message);
+          toast({
+            title: "Order Processing Issue",
+            description: "Payment was successful but there was an issue finalizing your order. Please contact support.",
+            variant: "destructive",
+          });
+        }
         
       } else {
         throw new Error("Payment was not completed successfully");
@@ -248,6 +312,7 @@ export default function Order() {
       
     } catch (error) {
       console.error("❌ Order submission error:", error);
+      console.error("❌ Error stack:", error instanceof Error ? error.stack : "No stack trace");
       
       const errorMessage = error instanceof Error ? error.message : "Failed to process order";
       
@@ -291,6 +356,16 @@ export default function Order() {
                         <div className="bg-blue-600 h-2 rounded-full animate-pulse" style={{width: '60%'}}></div>
                       </div>
                       <p className="text-xs text-gray-500 mt-1">Please wait, do not refresh the page...</p>
+                    </div>
+                  )}
+                  
+                  {/* Debug info for development */}
+                  {process.env.NODE_ENV === 'development' && (
+                    <div className="mb-4 p-3 bg-gray-100 rounded text-xs">
+                      <p><strong>Debug Info:</strong></p>
+                      <p>User ID: {user?.uid || 'Not logged in'}</p>
+                      <p>User Email: {userData?.email || 'No email'}</p>
+                      <p>User Name: {userData?.name || 'No name'}</p>
                     </div>
                   )}
                   

@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label";
 import { formatDate, formatCurrency, isValidGSTIN } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { ShoppingBag, FileText, Settings, Clock, Package, CheckCircle, Truck, CreditCard, Download, AlertCircle } from "lucide-react";
-import { getUserOrders, SimpleOrderData } from "@/lib/invoice-service";
+import { getUserOrders, SimpleOrderData, testDatabaseConnection } from "@/lib/invoice-service";
 import { initializeRazorpay, createRazorpayOrder, processPayment } from "@/lib/payment-service";
 import { updateOrderAfterPayment } from "@/lib/invoice-service";
 import { downloadInvoice } from "@/lib/invoice-generator";
@@ -43,24 +43,44 @@ export default function Dashboard() {
   }, [userData]);
 
   const fetchUserOrders = async () => {
-    if (!userData?.uid) {
-      console.log("No user ID available, skipping order fetch");
+    if (!userData?.uid && !user?.uid) {
+      console.log("❌ No user ID available, skipping order fetch");
       setLoading(false);
       return;
     }
     
     try {
       setLoading(true);
-      console.log("Fetching orders for user:", userData.uid);
+      const userId = userData?.uid || user?.uid;
+      console.log("🔄 Fetching orders for user:", userId);
+      console.log("👤 User data:", { userData, user });
       
-      const ordersData = await getUserOrders(userData.uid);
-      console.log("Fetched orders:", ordersData);
+      // Test database connection first
+      const dbConnected = await testDatabaseConnection();
+      if (!dbConnected) {
+        console.error("❌ Database connection failed");
+        toast({
+          title: "Database Error",
+          description: "Unable to connect to database. Please refresh the page.",
+          variant: "destructive",
+        });
+        setLoading(false);
+        return;
+      }
+      
+      const ordersData = await getUserOrders(userId!);
+      console.log("✅ Fetched orders:", ordersData);
       
       setOrders(ordersData);
-      console.log(`Loaded ${ordersData.length} orders`);
+      console.log(`📊 Loaded ${ordersData.length} orders for user ${userId}`);
+      
+      if (ordersData.length === 0) {
+        console.log("ℹ️ No orders found for this user");
+      }
       
     } catch (error) {
-      console.error("Error fetching user data:", error);
+      console.error("❌ Error fetching user orders:", error);
+      console.error("❌ Error details:", error instanceof Error ? error.message : "Unknown error");
       toast({
         title: "Error",
         description: "Failed to load your orders. Please refresh the page.",
@@ -72,8 +92,17 @@ export default function Dashboard() {
   };
 
   useEffect(() => {
-    fetchUserOrders();
-  }, [userData]);
+    console.log("🔄 Dashboard useEffect triggered");
+    console.log("👤 Current userData:", userData);
+    console.log("👤 Current user:", user);
+    
+    if (userData?.uid || user?.uid) {
+      fetchUserOrders();
+    } else {
+      console.log("⏳ Waiting for user authentication...");
+      setLoading(false);
+    }
+  }, [userData, user]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -350,6 +379,25 @@ export default function Dashboard() {
     <div className="container-custom py-12">
       <h1 className="text-3xl font-bold mb-2">Dashboard</h1>
       <p className="text-gray-600 mb-8">Welcome back, {userData?.name || "User"}</p>
+
+      {/* Debug info for development */}
+      {process.env.NODE_ENV === 'development' && (
+        <div className="mb-6 p-4 bg-gray-100 rounded-lg text-sm">
+          <h3 className="font-bold mb-2">Debug Information:</h3>
+          <p><strong>User ID:</strong> {user?.uid || 'Not available'}</p>
+          <p><strong>UserData ID:</strong> {userData?.uid || 'Not available'}</p>
+          <p><strong>Total Orders:</strong> {orders.length}</p>
+          <p><strong>Pending Orders:</strong> {getPendingOrders().length}</p>
+          <p><strong>My Orders:</strong> {getMyOrders().length}</p>
+          <p><strong>Loading:</strong> {loading ? 'Yes' : 'No'}</p>
+          {orders.length > 0 && (
+            <div className="mt-2">
+              <p><strong>Sample Order:</strong></p>
+              <pre className="text-xs">{JSON.stringify(orders[0], null, 2)}</pre>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         <Card>
