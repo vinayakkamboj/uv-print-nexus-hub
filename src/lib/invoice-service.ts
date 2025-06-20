@@ -20,7 +20,7 @@ export interface SimpleOrderData {
   customerEmail: string;
   hsnCode: string;
   trackingId: string;
-  status: 'pending_payment' | 'received' | 'processing' | 'printed' | 'shipped';
+  status: 'pending_payment' | 'received' | 'processing' | 'printed' | 'shipped' | 'delivered';
   paymentStatus: 'pending' | 'paid' | 'failed';
   timestamp: any;
   razorpayPaymentId?: string;
@@ -73,16 +73,22 @@ export const updateOrderAfterPayment = async (orderId: string, razorpayPaymentId
       return { success: false, message: "Order not found" };
     }
     
-    // Update order with payment success
+    const orderData = orderDoc.data() as SimpleOrderData;
+    
+    // Generate unique invoice ID
+    const invoiceId = `INV-${orderData.trackingId}-${Date.now().toString().slice(-6)}`;
+    
+    // Update order with payment success and move to received status
     await updateDoc(orderRef, {
-      status: 'received',
+      status: 'received', // Move to received status after successful payment
       paymentStatus: 'paid',
       razorpayPaymentId: razorpayPaymentId,
       paymentCompletedAt: Timestamp.now(),
+      invoiceId: invoiceId,
       lastUpdated: Timestamp.now()
     });
     
-    console.log("Order updated successfully after payment");
+    console.log("Order updated successfully after payment with invoice ID:", invoiceId);
     return { success: true };
     
   } catch (error) {
@@ -95,11 +101,11 @@ export const createAndSendInvoice = async (orderData: SimpleOrderData): Promise<
   try {
     console.log("Creating and sending invoice for order:", orderData.id);
     
-    // Generate invoice ID
-    const invoiceId = `INV-${orderData.trackingId}-${Date.now().toString().slice(-4)}`;
+    // Generate invoice ID if not exists
+    const invoiceId = orderData.invoiceId || `INV-${orderData.trackingId}-${Date.now().toString().slice(-6)}`;
     
-    // Update order with invoice ID
-    if (orderData.id) {
+    // Update order with invoice ID if not already set
+    if (orderData.id && !orderData.invoiceId) {
       try {
         await updateDoc(doc(db, 'orders', orderData.id), {
           invoiceId,

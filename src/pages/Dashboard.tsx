@@ -87,6 +87,8 @@ export default function Dashboard() {
         return "bg-purple-100 text-purple-700";
       case "shipped":
         return "bg-green-100 text-green-700";
+      case "delivered":
+        return "bg-green-200 text-green-800";
       default:
         return "bg-gray-100 text-gray-700";
     }
@@ -104,6 +106,8 @@ export default function Dashboard() {
         return <CheckCircle className="h-4 w-4" />;
       case "shipped":
         return <Truck className="h-4 w-4" />;
+      case "delivered":
+        return <CheckCircle className="h-4 w-4" />;
       default:
         return null;
     }
@@ -122,7 +126,7 @@ export default function Dashboard() {
     console.log("📄 Downloading invoice for order:", order.id);
     
     const invoiceData = {
-      invoiceId: order.invoiceId || `INV-${order.trackingId}-${Date.now().toString().slice(-4)}`,
+      invoiceId: order.invoiceId || `INV-${order.trackingId}-${Date.now().toString().slice(-6)}`,
       orderId: order.id,
       orderDate: order.timestamp?.toDate ? order.timestamp.toDate() : new Date(),
       customerName: order.customerName,
@@ -327,12 +331,19 @@ export default function Dashboard() {
     }
   };
 
+  // Filter orders properly
   const getPendingOrders = () => {
     return orders.filter(order => order.paymentStatus === "pending");
   };
 
-  const getCompletedOrders = () => {
+  const getMyOrders = () => {
+    // My Orders = All paid orders (received, processing, printed, shipped, delivered)
     return orders.filter(order => order.paymentStatus === "paid");
+  };
+
+  const getCompletedOrders = () => {
+    // Completed Orders = Orders that have been delivered
+    return orders.filter(order => order.status === "delivered");
   };
 
   return (
@@ -356,7 +367,7 @@ export default function Dashboard() {
 
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-lg font-medium">Pending Orders</CardTitle>
+            <CardTitle className="text-lg font-medium">Pending Payments</CardTitle>
             <CardDescription>Orders needing payment</CardDescription>
           </CardHeader>
           <CardContent>
@@ -371,13 +382,13 @@ export default function Dashboard() {
 
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-lg font-medium">Completed Orders</CardTitle>
+            <CardTitle className="text-lg font-medium">My Orders</CardTitle>
             <CardDescription>Successfully paid orders</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="flex items-center">
               <CheckCircle className="h-8 w-8 text-primary mr-3" />
-              <span className="text-3xl font-bold">{getCompletedOrders().length}</span>
+              <span className="text-3xl font-bold">{getMyOrders().length}</span>
             </div>
           </CardContent>
         </Card>
@@ -411,11 +422,13 @@ export default function Dashboard() {
                 <div className="flex justify-center p-6">
                   <div className="animate-spin rounded-full h-12 w-12 border-t-4 border-primary border-solid"></div>
                 </div>
-              ) : getCompletedOrders().length > 0 ? (
+              ) : getMyOrders().length > 0 ? (
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead>
                       <tr className="border-b">
+                        <th className="text-left py-3 px-4 font-medium">Order ID</th>
+                        <th className="text-left py-3 px-4 font-medium">Invoice ID</th>
                         <th className="text-left py-3 px-4 font-medium">Tracking ID</th>
                         <th className="text-left py-3 px-4 font-medium">Product</th>
                         <th className="text-left py-3 px-4 font-medium">Quantity</th>
@@ -426,7 +439,7 @@ export default function Dashboard() {
                       </tr>
                     </thead>
                     <tbody>
-                      {getCompletedOrders()
+                      {getMyOrders()
                         .sort((a, b) => {
                           if (!a.timestamp || !b.timestamp) return 0;
                           if (typeof a.timestamp === 'object' && a.timestamp.toMillis) {
@@ -436,6 +449,12 @@ export default function Dashboard() {
                         })
                         .map((order) => (
                           <tr key={order.id} className="border-b hover:bg-gray-50">
+                            <td className="py-3 px-4 font-mono text-xs">
+                              {order.id?.substring(0, 8) || "N/A"}
+                            </td>
+                            <td className="py-3 px-4 font-mono text-xs">
+                              {order.invoiceId || "N/A"}
+                            </td>
                             <td className="py-3 px-4 font-mono text-sm">
                               {order.trackingId}
                             </td>
@@ -505,6 +524,7 @@ export default function Dashboard() {
                   <table className="w-full">
                     <thead>
                       <tr className="border-b">
+                        <th className="text-left py-3 px-4 font-medium">Order ID</th>
                         <th className="text-left py-3 px-4 font-medium">Tracking ID</th>
                         <th className="text-left py-3 px-4 font-medium">Product</th>
                         <th className="text-left py-3 px-4 font-medium">Quantity</th>
@@ -524,6 +544,9 @@ export default function Dashboard() {
                         })
                         .map((order) => (
                           <tr key={order.id} className="border-b hover:bg-gray-50">
+                            <td className="py-3 px-4 font-mono text-xs">
+                              {order.id?.substring(0, 8) || "N/A"}
+                            </td>
                             <td className="py-3 px-4 font-mono text-sm">
                               {order.trackingId}
                             </td>

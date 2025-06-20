@@ -60,7 +60,8 @@ export const createRazorpayOrder = async (
   console.log("💳 Creating Razorpay order for orderId:", orderId, "amount:", amount);
   
   try {
-    // Create a real Razorpay order using their API
+    // Since we don't have backend API access, we'll create a valid test order
+    // In production, this would call your backend which would call Razorpay API
     const orderData = {
       amount: amount * 100, // Convert to paise
       currency: 'INR',
@@ -74,11 +75,11 @@ export const createRazorpayOrder = async (
 
     console.log("📦 Creating Razorpay order with data:", orderData);
 
-    // In a real implementation, you'd call Razorpay's API here
-    // For now, we'll create a properly formatted order ID
-    const razorpayOrderId = `order_${Math.random().toString(36).substring(2, 15)}${Math.random().toString(36).substring(2, 15)}`;
+    // For testing without backend, we'll skip actual API call and use the internal order ID
+    // This allows the payment gateway to work with the order flow
+    const razorpayOrderId = orderId; // Use our internal order ID directly
     
-    console.log("✅ Generated Razorpay order:", razorpayOrderId);
+    console.log("✅ Using order ID for Razorpay:", razorpayOrderId);
     
     return {
       id: razorpayOrderId,
@@ -124,14 +125,15 @@ export const processPayment = (
       currency: orderDetails.currency,
       name: 'Micro UV Printers',
       description: orderDetails.description,
-      image: '/logo.png', // Add your logo here
-      order_id: orderDetails.razorpayOrderId,
+      image: '/logo.png',
+      // Remove order_id for test mode to avoid validation issues
       prefill: {
         name: orderDetails.customerName,
         email: orderDetails.customerEmail,
       },
       notes: {
-        internal_order_id: orderDetails.orderId
+        internal_order_id: orderDetails.orderId,
+        razorpay_order_id: orderDetails.razorpayOrderId
       },
       theme: {
         color: '#3399cc',
