@@ -126,7 +126,6 @@ export const processPayment = (
       name: 'Micro UV Printers',
       description: orderDetails.description,
       image: '/logo.png',
-      // Remove order_id for test mode to avoid validation issues
       prefill: {
         name: orderDetails.customerName,
         email: orderDetails.customerEmail,
@@ -162,6 +161,9 @@ export const processPayment = (
           console.log("❌ Payment modal dismissed by user");
           reject(new Error("Payment cancelled by user"));
         },
+        // Add escape key handling
+        escape: true,
+        backdropclose: false
       },
     };
 

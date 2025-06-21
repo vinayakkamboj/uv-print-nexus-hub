@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -71,6 +70,13 @@ export default function Order() {
     const initializeComponents = async () => {
       console.log("🔄 Initializing components...");
       
+      // Verify user is authenticated first
+      if (!user) {
+        console.log("❌ User not authenticated, redirecting to login");
+        navigate("/login");
+        return;
+      }
+      
       // Test database connection
       const dbConnected = await testDatabaseConnection();
       if (!dbConnected) {
@@ -85,8 +91,10 @@ export default function Order() {
       await initializeRazorpay();
     };
     
-    initializeComponents();
-  }, [toast]);
+    if (user) {
+      initializeComponents();
+    }
+  }, [toast, user, navigate]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -140,13 +148,17 @@ export default function Order() {
     
     console.log("🚀 Starting order submission...");
 
+    // Enhanced authentication check
     if (!user || !userData) {
+      console.log("❌ Authentication check failed", { user: !!user, userData: !!userData });
       toast({
         title: "Authentication Error",
-        description: "Please log in to place an order.",
+        description: "Please log in to place an order. Redirecting to login page...",
         variant: "destructive",
       });
-      navigate("/login");
+      setTimeout(() => {
+        navigate("/login");
+      }, 2000);
       return;
     }
 
@@ -219,45 +231,59 @@ export default function Order() {
         orderData.customerEmail
       );
 
-      // Step 5: Process payment
+      // Step 5: Process payment with better error handling
       setProcessingStep("Opening payment gateway...");
-      const paymentResult = await processPayment({
-        orderId: orderResult.orderId,
-        razorpayOrderId: razorpayOrder.id,
-        amount: estimatedPrice,
-        currency: "INR",
-        customerName: orderData.customerName,
-        customerEmail: orderData.customerEmail,
-        description: `Order for ${orderData.productType} Printing - Qty: ${orderData.quantity}`,
-        userId: orderData.userId,
-        productType: orderData.productType,
-        quantity: orderData.quantity,
-        deliveryAddress: orderData.deliveryAddress
-      });
+      try {
+        const paymentResult = await processPayment({
+          orderId: orderResult.orderId,
+          razorpayOrderId: razorpayOrder.id,
+          amount: estimatedPrice,
+          currency: "INR",
+          customerName: orderData.customerName,
+          customerEmail: orderData.customerEmail,
+          description: `Order for ${orderData.productType} Printing - Qty: ${orderData.quantity}`,
+          userId: orderData.userId,
+          productType: orderData.productType,
+          quantity: orderData.quantity,
+          deliveryAddress: orderData.deliveryAddress
+        });
 
-      if (paymentResult.status === 'completed' && paymentResult.paymentId) {
-        setProcessingStep("Payment successful! Finalizing order...");
-        
-        const updateResult = await updateOrderAfterPayment(orderResult.orderId, paymentResult.paymentId);
-        
-        if (updateResult.success) {
-          toast({
-            title: "Order Placed Successfully",
-            description: "Your order has been received and payment processed.",
-          });
+        if (paymentResult.status === 'completed' && paymentResult.paymentId) {
+          setProcessingStep("Payment successful! Finalizing order...");
           
-          setTimeout(() => {
-            navigate("/dashboard");
-          }, 2000);
+          const updateResult = await updateOrderAfterPayment(orderResult.orderId, paymentResult.paymentId);
+          
+          if (updateResult.success) {
+            toast({
+              title: "Order Placed Successfully",
+              description: "Your order has been received and payment processed. Redirecting to dashboard...",
+            });
+            
+            // Use replace instead of navigate to avoid back button issues
+            setTimeout(() => {
+              window.location.href = "/dashboard";
+            }, 2000);
+          } else {
+            toast({
+              title: "Order Processing Issue",
+              description: "Payment successful but order finalization failed. Please contact support.",
+              variant: "destructive",
+            });
+          }
         } else {
+          throw new Error("Payment was not completed successfully");
+        }
+      } catch (paymentError) {
+        console.error("❌ Payment error:", paymentError);
+        if (paymentError instanceof Error && paymentError.message.includes("cancelled")) {
           toast({
-            title: "Order Processing Issue",
-            description: "Payment successful but order finalization failed. Please contact support.",
+            title: "Payment Cancelled",
+            description: "You can try placing the order again when ready.",
             variant: "destructive",
           });
+        } else {
+          throw paymentError;
         }
-      } else {
-        throw new Error("Payment was not completed successfully");
       }
       
     } catch (error) {
@@ -281,6 +307,23 @@ export default function Order() {
 
   const estimatedPrice = calculateEstimatedPrice();
   
+  if (!user) {
+    return (
+      <div className="container-custom py-12">
+        <div className="max-w-4xl mx-auto text-center">
+          <h1 className="text-2xl font-bold mb-4">Authentication Required</h1>
+          <p className="text-gray-600 mb-4">Please log in to place an order.</p>
+          <button 
+            onClick={() => navigate("/login")}
+            className="bg-primary text-white px-6 py-2 rounded hover:bg-primary/90"
+          >
+            Go to Login
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="container-custom py-12">
       <div className="max-w-4xl mx-auto">
