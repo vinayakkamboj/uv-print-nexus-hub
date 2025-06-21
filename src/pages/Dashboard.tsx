@@ -23,6 +23,7 @@ export default function Dashboard() {
   const [orders, setOrders] = useState<SimpleOrderData[]>([]);
   const [loading, setLoading] = useState(true);
   const [processingPayment, setProcessingPayment] = useState(false);
+  const [dbStatus, setDbStatus] = useState<'checking' | 'connected' | 'failed'>('checking');
   const navigate = useNavigate();
 
   const [name, setName] = useState(userData?.name || "");
@@ -47,69 +48,67 @@ export default function Dashboard() {
     
     if (!currentUserId) {
       console.log("❌ No user ID available, skipping order fetch");
-      console.log("👤 userData:", userData);
-      console.log("👤 user:", user);
       setLoading(false);
       return;
     }
     
     try {
       setLoading(true);
-      console.log("🔄 Fetching orders for user:", currentUserId);
-      console.log("👤 User context:", { 
+      console.log("🔄 Starting enhanced order fetch process...");
+      console.log("👤 User details:", { 
         userDataUid: userData?.uid, 
         userUid: user?.uid,
-        userEmail: userData?.email || user?.email 
+        userEmail: userData?.email || user?.email,
+        userName: userData?.name || user?.displayName
       });
       
-      // Test database connection first
+      // Test database connection with detailed logging
+      console.log("🧪 Testing database connection...");
+      setDbStatus('checking');
       const dbConnected = await testDatabaseConnection();
+      
       if (!dbConnected) {
         console.error("❌ Database connection failed");
+        setDbStatus('failed');
         toast({
-          title: "Database Error",
-          description: "Unable to connect to database. Please check Firebase permissions.",
+          title: "Database Connection Failed",
+          description: "Unable to connect to database. Please check Firebase security rules or contact support.",
           variant: "destructive",
         });
         setLoading(false);
         return;
       }
       
-      console.log("✅ Database connection successful, fetching orders...");
+      console.log("✅ Database connection successful");
+      setDbStatus('connected');
+      
+      console.log("📋 Fetching orders for user:", currentUserId);
       const ordersData = await getUserOrders(currentUserId);
-      console.log("✅ Fetched orders:", ordersData);
+      console.log("📊 Orders fetched:", ordersData.length);
       
       setOrders(ordersData);
-      console.log(`📊 Loaded ${ordersData.length} orders for user ${currentUserId}`);
       
       if (ordersData.length === 0) {
         console.log("ℹ️ No orders found for this user");
-        console.log("🔍 Possible reasons:");
-        console.log("  - User hasn't placed any orders yet");
-        console.log("  - Firebase security rules blocking access");
-        console.log("  - Orders were created with different userId");
+        toast({
+          title: "No Orders Found",
+          description: "You haven't placed any orders yet. Click 'Place New Order' to get started.",
+        });
       } else {
-        console.log("📋 Order summary:");
-        ordersData.forEach((order, index) => {
-          console.log(`  ${index + 1}. ${order.trackingId} - ${order.status} - ${order.paymentStatus}`);
+        console.log("✅ Orders loaded successfully");
+        toast({
+          title: "Orders Loaded",
+          description: `Found ${ordersData.length} order(s)`,
         });
       }
       
     } catch (error) {
-      console.error("❌ Error fetching user orders:", error);
-      console.error("❌ Error details:", error instanceof Error ? error.message : "Unknown error");
-      
-      let errorMessage = "Failed to load your orders. ";
-      
-      if (error instanceof Error && error.message.includes("permission")) {
-        errorMessage += "Database permission error. Please contact support.";
-      } else {
-        errorMessage += "Please refresh the page.";
-      }
+      console.error("❌ Error in fetchUserOrders:", error);
+      setDbStatus('failed');
       
       toast({
-        title: "Error",
-        description: errorMessage,
+        title: "Error Loading Orders",
+        description: "There was a problem loading your orders. Please refresh the page or contact support.",
         variant: "destructive",
       });
     } finally {
@@ -119,23 +118,37 @@ export default function Dashboard() {
 
   useEffect(() => {
     console.log("🔄 Dashboard useEffect triggered");
-    console.log("👤 Current userData:", userData);
-    console.log("👤 Current user:", user);
+    console.log("👤 Authentication state:", { 
+      userData: userData ? 'Available' : 'Not available',
+      user: user ? 'Available' : 'Not available',
+      userDataUid: userData?.uid,
+      userUid: user?.uid
+    });
     
     const currentUserId = userData?.uid || user?.uid;
     
     if (currentUserId) {
-      console.log("✅ User authenticated, fetching orders for:", currentUserId);
+      console.log("✅ User authenticated, fetching orders");
       fetchUserOrders();
     } else {
       console.log("⏳ Waiting for user authentication...");
-      // Set a timeout to wait for auth state
+      
+      // Wait a bit for auth state to settle
       const timeout = setTimeout(() => {
-        if (!userData?.uid && !user?.uid) {
+        const userId = userData?.uid || user?.uid;
+        if (userId) {
+          console.log("✅ User authenticated after timeout, fetching orders");
+          fetchUserOrders();
+        } else {
           console.log("❌ No user authentication after timeout");
+          setLoading(false);
+          toast({
+            title: "Authentication Required",
+            description: "Please log in to view your orders.",
+            variant: "destructive",
+          });
         }
-        setLoading(false);
-      }, 3000);
+      }, 2000);
       
       return () => clearTimeout(timeout);
     }
@@ -417,6 +430,22 @@ export default function Dashboard() {
       <h1 className="text-3xl font-bold mb-2">Dashboard</h1>
       <p className="text-gray-600 mb-8">Welcome back, {userData?.name || user?.displayName || "User"}</p>
 
+      {/* Database Status Indicator */}
+      <div className="mb-6">
+        <div className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${
+          dbStatus === 'connected' ? 'bg-green-100 text-green-700' : 
+          dbStatus === 'failed' ? 'bg-red-100 text-red-700' : 
+          'bg-yellow-100 text-yellow-700'
+        }`}>
+          <div className={`w-2 h-2 rounded-full mr-2 ${
+            dbStatus === 'connected' ? 'bg-green-500' : 
+            dbStatus === 'failed' ? 'bg-red-500' : 
+            'bg-yellow-500 animate-pulse'
+          }`}></div>
+          Database: {dbStatus === 'connected' ? 'Connected' : dbStatus === 'failed' ? 'Connection Failed' : 'Checking...'}
+        </div>
+      </div>
+
       {/* Enhanced Debug info for development */}
       {process.env.NODE_ENV === 'development' && (
         <div className="mb-6 p-4 bg-gray-100 rounded-lg text-sm">
@@ -425,6 +454,7 @@ export default function Dashboard() {
           <p><strong>User ID (userData):</strong> {userData?.uid || 'Not available'}</p>
           <p><strong>User Email:</strong> {userData?.email || user?.email || 'Not available'}</p>
           <p><strong>User Name:</strong> {userData?.name || user?.displayName || 'Not available'}</p>
+          <p><strong>Database Status:</strong> {dbStatus}</p>
           <p><strong>Total Orders:</strong> {orders.length}</p>
           <p><strong>Pending Orders:</strong> {getPendingOrders().length}</p>
           <p><strong>My Orders:</strong> {getMyOrders().length}</p>
@@ -432,7 +462,7 @@ export default function Dashboard() {
           {orders.length > 0 && (
             <div className="mt-2">
               <p><strong>Sample Order:</strong></p>
-              <pre className="text-xs overflow-auto max-h-32">
+              <pre className="text-xs overflow-auto max-h-32 bg-white p-2 rounded">
                 {JSON.stringify({
                   id: orders[0].id,
                   userId: orders[0].userId,

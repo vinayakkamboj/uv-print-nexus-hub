@@ -1,12 +1,11 @@
 
 import { initializeApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
-import { getStorage } from "firebase/storage";
+import { getAuth, connectAuthEmulator } from "firebase/auth";
+import { getFirestore, connectFirestoreEmulator } from "firebase/firestore";
+import { getStorage, connectStorageEmulator } from "firebase/storage";
 import { getAnalytics, isSupported } from "firebase/analytics";
 
 const firebaseConfig = {
-  // IMPORTANT: Replace with your Firebase configuration
   apiKey: "AIzaSyAz9n6m6nFCH3zrhcCa7egABB6hX9RxicA",
   authDomain: "micro-uv-printers.firebaseapp.com",
   projectId: "micro-uv-printers",
@@ -18,12 +17,30 @@ const firebaseConfig = {
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
-const analytics = getAnalytics(app);
 
 // Initialize Firebase services
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 export const storage = getStorage(app);
+
+// Test database connection immediately
+const testConnection = async () => {
+  try {
+    console.log("🔥 Firebase initialized successfully");
+    console.log("📊 Project ID:", firebaseConfig.projectId);
+    console.log("🔐 Auth Domain:", firebaseConfig.authDomain);
+    
+    // Log current auth state
+    auth.onAuthStateChanged((user) => {
+      console.log("🔐 Auth state changed:", user ? `User: ${user.uid}` : "No user");
+    });
+    
+  } catch (error) {
+    console.error("❌ Firebase initialization error:", error);
+  }
+};
+
+testConnection();
 
 // Initialize Analytics conditionally (browser only)
 export const initAnalytics = async () => {

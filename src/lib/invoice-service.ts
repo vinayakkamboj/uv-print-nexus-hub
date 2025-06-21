@@ -1,6 +1,5 @@
-
 import { db } from './firebase';
-import { collection, addDoc, doc, updateDoc, getDoc, Timestamp, query, where, getDocs, orderBy } from 'firebase/firestore';
+import { collection, addDoc, doc, updateDoc, getDoc, Timestamp, query, where, getDocs, orderBy, enableNetwork, disableNetwork } from 'firebase/firestore';
 import { generateInvoicePDF } from './invoice-generator';
 import { sendInvoiceEmail } from './email-service';
 import { PaymentDetails } from './payment-service';
@@ -29,9 +28,72 @@ export interface SimpleOrderData {
   lastUpdated?: any;
 }
 
+export const testDatabaseConnection = async (): Promise<boolean> => {
+  try {
+    console.log("🧪 Testing Firestore connection...");
+    console.log("🔥 Firebase project:", db.app.options.projectId);
+    
+    // Test basic connection
+    await enableNetwork(db);
+    console.log("✅ Network enabled for Firestore");
+    
+    // Try to get any document to test read permissions
+    console.log("🔍 Testing read permissions...");
+    const testQuery = query(collection(db, 'orders'));
+    const snapshot = await getDocs(testQuery);
+    
+    console.log("✅ Database connection successful");
+    console.log(`📊 Found ${snapshot.docs.length} orders in database`);
+    
+    // Log some sample data if available
+    if (snapshot.docs.length > 0) {
+      const sampleOrder = snapshot.docs[0].data();
+      console.log("📋 Sample order structure:", {
+        id: snapshot.docs[0].id,
+        userId: sampleOrder.userId,
+        status: sampleOrder.status,
+        timestamp: sampleOrder.timestamp
+      });
+    }
+    
+    return true;
+  } catch (error) {
+    console.error("❌ Database connection test failed:", error);
+    console.error("❌ Error code:", error.code);
+    console.error("❌ Error message:", error.message);
+    
+    if (error.code === 'permission-denied') {
+      console.error("🚫 Permission denied - Firebase security rules need to be updated");
+      console.error("📋 Required rules for orders collection:");
+      console.error(`
+        rules_version = '2';
+        service cloud.firestore {
+          match /databases/{database}/documents {
+            match /orders/{orderId} {
+              allow read, write: if request.auth != null;
+            }
+            match /users/{userId} {
+              allow read, write: if request.auth != null && request.auth.uid == userId;
+            }
+          }
+        }
+      `);
+    }
+    
+    return false;
+  }
+};
+
 export const createOrder = async (orderData: Omit<SimpleOrderData, 'id' | 'status' | 'paymentStatus' | 'timestamp' | 'lastUpdated'>): Promise<{ success: boolean; orderId?: string; message?: string }> => {
   try {
-    console.log("🔄 Creating order with data:", orderData);
+    console.log("🔄 Creating order with enhanced debugging...");
+    console.log("📊 Order data:", JSON.stringify(orderData, null, 2));
+    
+    // Validate Firebase connection first
+    const dbConnected = await testDatabaseConnection();
+    if (!dbConnected) {
+      return { success: false, message: "Database connection failed. Check Firebase security rules." };
+    }
     
     // Validate required fields
     if (!orderData.userId) {
@@ -44,10 +106,7 @@ export const createOrder = async (orderData: Omit<SimpleOrderData, 'id' | 'statu
       return { success: false, message: "Customer email is required" };
     }
     
-    // Test write permission before creating order
-    console.log("🧪 Testing write permission to orders collection...");
-    
-    // Create order with default pending payment status
+    // Create order with default status
     const orderWithDefaults: Omit<SimpleOrderData, 'id'> = {
       ...orderData,
       status: 'pending_payment',
@@ -56,22 +115,20 @@ export const createOrder = async (orderData: Omit<SimpleOrderData, 'id' | 'statu
       lastUpdated: Timestamp.now()
     };
 
-    console.log("📤 Adding order to Firestore collection 'orders'...");
-    console.log("📊 Order data being saved:", JSON.stringify(orderWithDefaults, null, 2));
+    console.log("📤 Adding order to Firestore...");
+    console.log("🏪 Collection: orders");
+    console.log("📋 Data being saved:", JSON.stringify(orderWithDefaults, null, 2));
     
     const docRef = await addDoc(collection(db, 'orders'), orderWithDefaults);
+    console.log("✅ Order created with ID:", docRef.id);
     
-    console.log("✅ Order created successfully with ID:", docRef.id);
-    
-    // Force a small delay to ensure Firestore consistency
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    // Verify the order was actually created by reading it back
+    // Verify the order was created
+    console.log("🔍 Verifying order creation...");
     const createdOrder = await getDoc(docRef);
     if (createdOrder.exists()) {
       const orderData = createdOrder.data();
-      console.log("✅ Order verification successful, data:", orderData);
-      console.log("✅ Order userId matches:", orderData.userId === orderWithDefaults.userId);
+      console.log("✅ Order verification successful");
+      console.log("📊 Created order data:", orderData);
     } else {
       console.error("❌ Order verification failed - document doesn't exist");
       return { success: false, message: "Order creation verification failed" };
@@ -84,15 +141,12 @@ export const createOrder = async (orderData: Omit<SimpleOrderData, 'id' | 'statu
     
   } catch (error) {
     console.error("❌ Error creating order:", error);
-    console.error("❌ Error code:", error.code);
-    console.error("❌ Error message:", error.message);
-    console.error("❌ Error details:", error instanceof Error ? error.message : "Unknown error");
-    console.error("❌ Error stack:", error instanceof Error ? error.stack : "No stack trace");
+    console.error("❌ Full error object:", JSON.stringify(error, null, 2));
     
     if (error.code === 'permission-denied') {
       return {
         success: false,
-        message: "Permission denied. Please check Firebase security rules."
+        message: "Permission denied. Please update Firebase security rules to allow authenticated users to create orders."
       };
     }
     
@@ -203,47 +257,71 @@ export const createAndSendInvoice = async (orderData: SimpleOrderData): Promise<
 
 export const getUserOrders = async (userId: string): Promise<SimpleOrderData[]> => {
   try {
-    console.log("🔄 Fetching orders for user:", userId);
-    console.log("🔍 Attempting to query orders collection...");
+    console.log("🔄 Fetching orders for user with enhanced debugging:", userId);
     
     if (!userId) {
-      console.error("❌ User ID is empty or undefined");
+      console.error("❌ User ID is empty");
       return [];
     }
     
-    // Test read permission first
-    console.log("🧪 Testing read permission to orders collection...");
+    // Test database connection first
+    const dbConnected = await testDatabaseConnection();
+    if (!dbConnected) {
+      console.error("❌ Database not connected, cannot fetch orders");
+      return [];
+    }
     
-    // Query orders directly from Firestore with better error handling
+    console.log("📋 Querying orders collection...");
+    console.log("🔍 Query: collection('orders').where('userId', '==', '" + userId + "')");
+    
     const ordersQuery = query(
       collection(db, 'orders'),
       where('userId', '==', userId),
       orderBy('timestamp', 'desc')
     );
     
-    console.log("📤 Executing Firestore query for user orders...");
     const ordersSnapshot = await getDocs(ordersQuery);
+    console.log("📊 Query completed. Documents found:", ordersSnapshot.docs.length);
     
-    console.log("📊 Query completed, processing results...");
-    console.log("📊 Number of documents found:", ordersSnapshot.docs.length);
+    if (ordersSnapshot.docs.length === 0) {
+      console.log("⚠️ No orders found for user:", userId);
+      console.log("🔍 Possible reasons:");
+      console.log("  1. User hasn't placed any orders yet");
+      console.log("  2. Orders were created with different userId");
+      console.log("  3. Firebase security rules are blocking access");
+      console.log("  4. User is not authenticated properly");
+      
+      // Let's check if there are any orders in the database at all
+      const allOrdersQuery = query(collection(db, 'orders'));
+      try {
+        const allOrdersSnapshot = await getDocs(allOrdersQuery);
+        console.log("📊 Total orders in database:", allOrdersSnapshot.docs.length);
+        
+        if (allOrdersSnapshot.docs.length > 0) {
+          console.log("📋 Sample userIds in database:");
+          allOrdersSnapshot.docs.slice(0, 3).forEach((doc, index) => {
+            const data = doc.data();
+            console.log(`  ${index + 1}. Document ID: ${doc.id}, userId: ${data.userId}`);
+          });
+        }
+      } catch (allOrdersError) {
+        console.log("❌ Cannot read all orders (permission denied)");
+      }
+    }
     
     const orders = ordersSnapshot.docs.map(doc => {
       const data = doc.data();
-      console.log("📄 Processing order document:", doc.id, data);
+      console.log("📄 Processing order document:", doc.id);
       return {
         id: doc.id,
         ...data
       };
     }) as SimpleOrderData[];
     
-    console.log(`✅ Found ${orders.length} orders for user ${userId}`);
-    console.log("📊 Orders data:", orders);
-    
-    // Log each order for debugging
+    console.log(`✅ Returning ${orders.length} orders for user ${userId}`);
     orders.forEach((order, index) => {
       console.log(`📋 Order ${index + 1}:`, {
         id: order.id,
-        userId: order.userId,
         trackingId: order.trackingId,
         status: order.status,
         paymentStatus: order.paymentStatus,
@@ -255,43 +333,23 @@ export const getUserOrders = async (userId: string): Promise<SimpleOrderData[]> 
     
   } catch (error) {
     console.error("❌ Error fetching user orders:", error);
-    console.error("❌ Error code:", error.code);
-    console.error("❌ Error message:", error.message);
-    console.error("❌ Error details:", error instanceof Error ? error.message : "Unknown error");
+    console.error("❌ Error details:", JSON.stringify(error, null, 2));
     
     if (error.code === 'permission-denied') {
-      console.error("❌ Permission denied when fetching orders. Check Firebase security rules.");
+      console.error("🚫 Permission denied when fetching orders");
+      console.error("📋 Update your Firebase security rules to:");
+      console.error(`
+        rules_version = '2';
+        service cloud.firestore {
+          match /databases/{database}/documents {
+            match /orders/{orderId} {
+              allow read, write: if request.auth != null;
+            }
+          }
+        }
+      `);
     }
     
     return [];
-  }
-};
-
-export const testDatabaseConnection = async (): Promise<boolean> => {
-  try {
-    console.log("🔄 Testing database connection...");
-    console.log("🧪 Testing read permission to orders collection...");
-    
-    // Try to read from the orders collection with a limit to test permissions
-    const testQuery = query(
-      collection(db, 'orders'), 
-      orderBy('timestamp', 'desc')
-    );
-    const testSnapshot = await getDocs(testQuery);
-    
-    console.log("✅ Database connection test successful");
-    console.log(`📊 Total orders in database: ${testSnapshot.docs.length}`);
-    
-    return true;
-  } catch (error) {
-    console.error("❌ Database connection test failed:", error);
-    console.error("❌ Error code:", error.code);
-    console.error("❌ Error message:", error.message);
-    
-    if (error.code === 'permission-denied') {
-      console.error("❌ Permission denied. Firebase security rules need to be updated.");
-    }
-    
-    return false;
   }
 };
