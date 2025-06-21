@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -82,14 +83,10 @@ export default function Order() {
       
       // Initialize Razorpay
       await initializeRazorpay();
-      
-      // Log current user data for debugging
-      console.log("👤 Current user:", user);
-      console.log("📊 Current userData:", userData);
     };
     
     initializeComponents();
-  }, [user, userData, toast]);
+  }, [toast]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -124,15 +121,12 @@ export default function Order() {
     return basePrice * 3;
   };
 
-  // Mock file upload that works without Firebase Storage CORS issues
   const mockFileUpload = async (file: File, userId: string): Promise<string> => {
-    console.log("📁 Using mock file upload...");
+    console.log("📁 Mock file upload...");
     setProcessingStep("Processing design file...");
     
-    // Simulate upload delay
     await new Promise(resolve => setTimeout(resolve, 1000));
     
-    // Create a mock URL - in production, this would be a real Firebase Storage URL
     const mockFileUrl = `https://storage.googleapis.com/mock-uploads/${userId}/${Date.now()}_${file.name}`;
     console.log("✅ Mock file uploaded:", mockFileUrl);
     
@@ -142,21 +136,11 @@ export default function Order() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Prevent multiple submissions
-    if (loading) {
-      console.log("⚠️ Order already being processed, ignoring submission");
-      return;
-    }
+    if (loading) return;
     
     console.log("🚀 Starting order submission...");
-    console.log("👤 User context:", { 
-      user: user ? { uid: user.uid, email: user.email } : null, 
-      userData: userData ? { uid: userData.uid, email: userData.email, name: userData.name } : null 
-    });
 
-    // Validate user authentication
     if (!user || !userData) {
-      console.error("❌ User not authenticated");
       toast({
         title: "Authentication Error",
         description: "Please log in to place an order.",
@@ -166,9 +150,7 @@ export default function Order() {
       return;
     }
 
-    // Validate form data
     if (!productType || !quantity || !deliveryAddress || !file) {
-      console.error("❌ Missing required fields");
       toast({
         title: "Validation Error",
         description: "Please fill in all required fields.",
@@ -178,7 +160,6 @@ export default function Order() {
     }
 
     if (gstNumber && !isValidGSTIN(gstNumber)) {
-      console.error("❌ Invalid GST number");
       toast({
         title: "Validation Error",
         description: "Please enter a valid GST number.",
@@ -194,28 +175,14 @@ export default function Order() {
       const customerTrackingId = `TRK-${user.uid.substring(0, 6)}-${generateId(8).toUpperCase()}`;
       const hsnCode = hsnCodes[productType as keyof typeof hsnCodes] || "4911";
 
-      console.log("📊 Order details:", {
-        estimatedPrice,
-        customerTrackingId,
-        hsnCode,
-        userId: user.uid,
-        userEmail: userData.email || user.email,
-        userName: userData.name || user.displayName
-      });
-
-      // Step 1: Upload file using mock upload (bypasses CORS issues)
+      // Step 1: Upload file
       setProcessingStep("Uploading design file...");
-      console.log("📁 Uploading file...");
-      
       const fileUrl = await mockFileUpload(file, user.uid);
-      console.log("✅ File uploaded successfully");
 
-      // Step 2: Create order with proper user data
+      // Step 2: Create order
       setProcessingStep("Creating order...");
-      console.log("📦 Creating order...");
-
       const orderData = {
-        userId: user.uid, // Ensure this matches the authenticated user
+        userId: user.uid,
         productType,
         quantity: parseInt(quantity),
         specifications,
@@ -230,26 +197,14 @@ export default function Order() {
         trackingId: customerTrackingId,
       };
 
-      console.log("📤 Submitting order data:", orderData);
-      console.log("🔍 User ID verification:", {
-        orderUserId: orderData.userId,
-        authUserId: user.uid,
-        match: orderData.userId === user.uid
-      });
-
       const orderResult = await createOrder(orderData);
       
       if (!orderResult.success || !orderResult.orderId) {
-        console.error("❌ Order creation failed:", orderResult.message);
         throw new Error(orderResult.message || "Failed to create order");
       }
 
-      console.log("✅ Order created successfully:", orderResult.orderId);
-
-      // Step 3: Initialize Razorpay
+      // Step 3: Initialize payment
       setProcessingStep("Initializing payment gateway...");
-      console.log("💳 Initializing Razorpay...");
-      
       const razorpayLoaded = await initializeRazorpay();
       if (!razorpayLoaded) {
         throw new Error("Failed to load payment gateway");
@@ -257,8 +212,6 @@ export default function Order() {
 
       // Step 4: Create Razorpay order
       setProcessingStep("Creating payment order...");
-      console.log("💳 Creating Razorpay order...");
-
       const razorpayOrder = await createRazorpayOrder(
         orderResult.orderId,
         estimatedPrice,
@@ -266,12 +219,8 @@ export default function Order() {
         orderData.customerEmail
       );
 
-      console.log("✅ Razorpay order created:", razorpayOrder);
-
       // Step 5: Process payment
       setProcessingStep("Opening payment gateway...");
-      console.log("💳 Processing payment...");
-
       const paymentResult = await processPayment({
         orderId: orderResult.orderId,
         razorpayOrderId: razorpayOrder.id,
@@ -286,51 +235,37 @@ export default function Order() {
         deliveryAddress: orderData.deliveryAddress
       });
 
-      console.log("💳 Payment result:", paymentResult);
-
       if (paymentResult.status === 'completed' && paymentResult.paymentId) {
-        console.log("✅ Payment successful");
         setProcessingStep("Payment successful! Finalizing order...");
         
         const updateResult = await updateOrderAfterPayment(orderResult.orderId, paymentResult.paymentId);
         
         if (updateResult.success) {
-          console.log("✅ Order finalized successfully");
-          
           toast({
             title: "Order Placed Successfully",
-            description: "Your order has been received and payment processed. Check 'My Orders' to view details.",
+            description: "Your order has been received and payment processed.",
           });
           
-          // Add delay before navigation to ensure user sees success message
           setTimeout(() => {
             navigate("/dashboard");
           }, 2000);
         } else {
-          console.error("❌ Failed to finalize order:", updateResult.message);
           toast({
             title: "Order Processing Issue",
-            description: "Payment was successful but there was an issue finalizing your order. Please contact support.",
+            description: "Payment successful but order finalization failed. Please contact support.",
             variant: "destructive",
           });
         }
-        
       } else {
         throw new Error("Payment was not completed successfully");
       }
       
     } catch (error) {
       console.error("❌ Order submission error:", error);
-      console.error("❌ Error stack:", error instanceof Error ? error.stack : "No stack trace");
       
       let errorMessage = "Failed to process order";
-      
       if (error instanceof Error) {
-        if (error.message.includes("permission")) {
-          errorMessage = "Database permission error. Please contact support.";
-        } else {
-          errorMessage = error.message;
-        }
+        errorMessage = error.message;
       }
       
       toast({
@@ -373,16 +308,6 @@ export default function Order() {
                         <div className="bg-blue-600 h-2 rounded-full animate-pulse" style={{width: '60%'}}></div>
                       </div>
                       <p className="text-xs text-gray-500 mt-1">Please wait, do not refresh the page...</p>
-                    </div>
-                  )}
-                  
-                  {/* Debug info for development */}
-                  {process.env.NODE_ENV === 'development' && (
-                    <div className="mb-4 p-3 bg-gray-100 rounded text-xs">
-                      <p><strong>Debug Info:</strong></p>
-                      <p>User ID: {user?.uid || 'Not logged in'}</p>
-                      <p>User Email: {userData?.email || 'No email'}</p>
-                      <p>User Name: {userData?.name || 'No name'}</p>
                     </div>
                   )}
                   
@@ -541,8 +466,7 @@ export default function Order() {
                     <AlertCircle className="h-5 w-5 text-blue-500 mr-2 flex-shrink-0" />
                     <div className="text-sm text-blue-700">
                       After placing your order, you will be directed to complete the 
-                      payment via our secure payment gateway. Once payment is completed, 
-                      we will generate an invoice and send it to your email.
+                      payment via our secure payment gateway.
                     </div>
                   </div>
                 </div>

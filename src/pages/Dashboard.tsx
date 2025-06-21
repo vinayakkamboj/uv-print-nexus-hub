@@ -47,55 +47,41 @@ export default function Dashboard() {
     const currentUserId = userData?.uid || user?.uid;
     
     if (!currentUserId) {
-      console.log("❌ No user ID available, skipping order fetch");
+      console.log("❌ No user ID available");
       setLoading(false);
       return;
     }
     
     try {
       setLoading(true);
-      console.log("🔄 Starting enhanced order fetch process...");
-      console.log("👤 User details:", { 
-        userDataUid: userData?.uid, 
-        userUid: user?.uid,
-        userEmail: userData?.email || user?.email,
-        userName: userData?.name || user?.displayName
-      });
+      console.log("🔄 Fetching orders for user:", currentUserId);
       
-      // Test database connection with detailed logging
-      console.log("🧪 Testing database connection...");
+      // Test database connection
       setDbStatus('checking');
       const dbConnected = await testDatabaseConnection();
       
       if (!dbConnected) {
-        console.error("❌ Database connection failed");
         setDbStatus('failed');
         toast({
           title: "Database Connection Failed",
-          description: "Unable to connect to database. Please check Firebase security rules or contact support.",
+          description: "Please refresh the page and try again.",
           variant: "destructive",
         });
         setLoading(false);
         return;
       }
       
-      console.log("✅ Database connection successful");
       setDbStatus('connected');
       
-      console.log("📋 Fetching orders for user:", currentUserId);
       const ordersData = await getUserOrders(currentUserId);
-      console.log("📊 Orders fetched:", ordersData.length);
-      
       setOrders(ordersData);
       
       if (ordersData.length === 0) {
-        console.log("ℹ️ No orders found for this user");
         toast({
           title: "No Orders Found",
-          description: "You haven't placed any orders yet. Click 'Place New Order' to get started.",
+          description: "You haven't placed any orders yet.",
         });
       } else {
-        console.log("✅ Orders loaded successfully");
         toast({
           title: "Orders Loaded",
           description: `Found ${ordersData.length} order(s)`,
@@ -103,12 +89,12 @@ export default function Dashboard() {
       }
       
     } catch (error) {
-      console.error("❌ Error in fetchUserOrders:", error);
+      console.error("❌ Error fetching orders:", error);
       setDbStatus('failed');
       
       toast({
         title: "Error Loading Orders",
-        description: "There was a problem loading your orders. Please refresh the page or contact support.",
+        description: "Please refresh the page and try again.",
         variant: "destructive",
       });
     } finally {
@@ -117,30 +103,17 @@ export default function Dashboard() {
   };
 
   useEffect(() => {
-    console.log("🔄 Dashboard useEffect triggered");
-    console.log("👤 Authentication state:", { 
-      userData: userData ? 'Available' : 'Not available',
-      user: user ? 'Available' : 'Not available',
-      userDataUid: userData?.uid,
-      userUid: user?.uid
-    });
-    
     const currentUserId = userData?.uid || user?.uid;
     
     if (currentUserId) {
-      console.log("✅ User authenticated, fetching orders");
       fetchUserOrders();
     } else {
-      console.log("⏳ Waiting for user authentication...");
-      
-      // Wait a bit for auth state to settle
+      // Wait for auth state to settle
       const timeout = setTimeout(() => {
         const userId = userData?.uid || user?.uid;
         if (userId) {
-          console.log("✅ User authenticated after timeout, fetching orders");
           fetchUserOrders();
         } else {
-          console.log("❌ No user authentication after timeout");
           setLoading(false);
           toast({
             title: "Authentication Required",
@@ -148,7 +121,7 @@ export default function Dashboard() {
             variant: "destructive",
           });
         }
-      }, 2000);
+      }, 1000);
       
       return () => clearTimeout(timeout);
     }
@@ -202,8 +175,6 @@ export default function Dashboard() {
       return;
     }
 
-    console.log("📄 Downloading invoice for order:", order.id);
-    
     const invoiceData = {
       invoiceId: order.invoiceId || `INV-${order.trackingId}-${Date.now().toString().slice(-6)}`,
       orderId: order.id,
@@ -410,18 +381,15 @@ export default function Dashboard() {
     }
   };
 
-  // Filter orders properly
   const getPendingOrders = () => {
     return orders.filter(order => order.paymentStatus === "pending");
   };
 
   const getMyOrders = () => {
-    // My Orders = All paid orders (received, processing, printed, shipped, delivered)
     return orders.filter(order => order.paymentStatus === "paid");
   };
 
   const getCompletedOrders = () => {
-    // Completed Orders = Orders that have been delivered
     return orders.filter(order => order.status === "delivered");
   };
 
@@ -445,37 +413,6 @@ export default function Dashboard() {
           Database: {dbStatus === 'connected' ? 'Connected' : dbStatus === 'failed' ? 'Connection Failed' : 'Checking...'}
         </div>
       </div>
-
-      {/* Enhanced Debug info for development */}
-      {process.env.NODE_ENV === 'development' && (
-        <div className="mb-6 p-4 bg-gray-100 rounded-lg text-sm">
-          <h3 className="font-bold mb-2">Debug Information:</h3>
-          <p><strong>User ID (auth):</strong> {user?.uid || 'Not available'}</p>
-          <p><strong>User ID (userData):</strong> {userData?.uid || 'Not available'}</p>
-          <p><strong>User Email:</strong> {userData?.email || user?.email || 'Not available'}</p>
-          <p><strong>User Name:</strong> {userData?.name || user?.displayName || 'Not available'}</p>
-          <p><strong>Database Status:</strong> {dbStatus}</p>
-          <p><strong>Total Orders:</strong> {orders.length}</p>
-          <p><strong>Pending Orders:</strong> {getPendingOrders().length}</p>
-          <p><strong>My Orders:</strong> {getMyOrders().length}</p>
-          <p><strong>Loading:</strong> {loading ? 'Yes' : 'No'}</p>
-          {orders.length > 0 && (
-            <div className="mt-2">
-              <p><strong>Sample Order:</strong></p>
-              <pre className="text-xs overflow-auto max-h-32 bg-white p-2 rounded">
-                {JSON.stringify({
-                  id: orders[0].id,
-                  userId: orders[0].userId,
-                  trackingId: orders[0].trackingId,
-                  status: orders[0].status,
-                  paymentStatus: orders[0].paymentStatus,
-                  totalAmount: orders[0].totalAmount
-                }, null, 2)}
-              </pre>
-            </div>
-          )}
-        </div>
-      )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         <Card>
@@ -554,7 +491,6 @@ export default function Dashboard() {
                     <thead>
                       <tr className="border-b">
                         <th className="text-left py-3 px-4 font-medium">Order ID</th>
-                        <th className="text-left py-3 px-4 font-medium">Invoice ID</th>
                         <th className="text-left py-3 px-4 font-medium">Tracking ID</th>
                         <th className="text-left py-3 px-4 font-medium">Product</th>
                         <th className="text-left py-3 px-4 font-medium">Quantity</th>
@@ -565,56 +501,41 @@ export default function Dashboard() {
                       </tr>
                     </thead>
                     <tbody>
-                      {getMyOrders()
-                        .sort((a, b) => {
-                          if (!a.timestamp || !b.timestamp) return 0;
-                          if (typeof a.timestamp === 'object' && a.timestamp.toMillis) {
-                            return b.timestamp.toMillis() - a.timestamp.toMillis();
-                          }
-                          return 0;
-                        })
-                        .map((order) => (
-                          <tr key={order.id} className="border-b hover:bg-gray-50">
-                            <td className="py-3 px-4 font-mono text-xs">
-                              {order.id?.substring(0, 8) || "N/A"}
-                            </td>
-                            <td className="py-3 px-4 font-mono text-xs">
-                              {order.invoiceId || "N/A"}
-                            </td>
-                            <td className="py-3 px-4 font-mono text-sm">
-                              {order.trackingId}
-                            </td>
-                            <td className="py-3 px-4">{order.productType}</td>
-                            <td className="py-3 px-4">{order.quantity}</td>
-                            <td className="py-3 px-4">
-                              {order.timestamp ? (
-                                typeof order.timestamp === 'object' && order.timestamp.toDate 
-                                  ? formatDate(order.timestamp.toDate()) 
-                                  : formatDate(order.timestamp)
-                              ) : "N/A"}
-                            </td>
-                            <td className="py-3 px-4">
-                              <div className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(order.status)}`}>
-                                {getStatusIcon(order.status)}
-                                <span className="ml-1 capitalize">
-                                  {order.status.replace('_', ' ')}
-                                </span>
-                              </div>
-                            </td>
-                            <td className="py-3 px-4">{formatCurrency(order.totalAmount)}</td>
-                            <td className="py-3 px-4">
-                              <Button 
-                                size="sm" 
-                                variant="outline" 
-                                onClick={() => handleDownloadInvoice(order)}
-                                className="text-xs"
-                              >
-                                <Download className="h-3 w-3 mr-1" />
-                                Download
-                              </Button>
-                            </td>
-                          </tr>
-                        ))}
+                      {getMyOrders().map((order) => (
+                        <tr key={order.id} className="border-b hover:bg-gray-50">
+                          <td className="py-3 px-4 font-mono text-xs">
+                            {order.id?.substring(0, 8) || "N/A"}
+                          </td>
+                          <td className="py-3 px-4 font-mono text-sm">
+                            {order.trackingId}
+                          </td>
+                          <td className="py-3 px-4">{order.productType}</td>
+                          <td className="py-3 px-4">{order.quantity}</td>
+                          <td className="py-3 px-4">
+                            {order.timestamp ? formatDate(order.timestamp.toDate ? order.timestamp.toDate() : order.timestamp) : "N/A"}
+                          </td>
+                          <td className="py-3 px-4">
+                            <div className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(order.status)}`}>
+                              {getStatusIcon(order.status)}
+                              <span className="ml-1 capitalize">
+                                {order.status.replace('_', ' ')}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="py-3 px-4">{formatCurrency(order.totalAmount)}</td>
+                          <td className="py-3 px-4">
+                            <Button 
+                              size="sm" 
+                              variant="outline" 
+                              onClick={() => handleDownloadInvoice(order)}
+                              className="text-xs"
+                            >
+                              <Download className="h-3 w-3 mr-1" />
+                              Download
+                            </Button>
+                          </td>
+                        </tr>
+                      ))}
                     </tbody>
                   </table>
                 </div>
@@ -660,55 +581,43 @@ export default function Dashboard() {
                       </tr>
                     </thead>
                     <tbody>
-                      {getPendingOrders()
-                        .sort((a, b) => {
-                          if (!a.timestamp || !b.timestamp) return 0;
-                          if (typeof a.timestamp === 'object' && a.timestamp.toMillis) {
-                            return b.timestamp.toMillis() - a.timestamp.toMillis();
-                          }
-                          return 0;
-                        })
-                        .map((order) => (
-                          <tr key={order.id} className="border-b hover:bg-gray-50">
-                            <td className="py-3 px-4 font-mono text-xs">
-                              {order.id?.substring(0, 8) || "N/A"}
-                            </td>
-                            <td className="py-3 px-4 font-mono text-sm">
-                              {order.trackingId}
-                            </td>
-                            <td className="py-3 px-4">{order.productType}</td>
-                            <td className="py-3 px-4">{order.quantity}</td>
-                            <td className="py-3 px-4">
-                              {order.timestamp ? (
-                                typeof order.timestamp === 'object' && order.timestamp.toDate 
-                                  ? formatDate(order.timestamp.toDate()) 
-                                  : formatDate(order.timestamp)
-                              ) : "N/A"}
-                            </td>
-                            <td className="py-3 px-4">{formatCurrency(order.totalAmount)}</td>
-                            <td className="py-3 px-4">
-                              <Button 
-                                size="sm" 
-                                variant="default" 
-                                onClick={() => handleRetryPayment(order)}
-                                disabled={processingPayment}
-                                className="text-xs"
-                              >
-                                {processingPayment ? (
-                                  <>
-                                    <div className="mr-2 h-3 w-3 animate-spin rounded-full border-t-2 border-white"></div>
-                                    Processing...
-                                  </>
-                                ) : (
-                                  <>
-                                    <CreditCard className="h-3 w-3 mr-1" />
-                                    Complete Payment
-                                  </>
-                                )}
-                              </Button>
-                            </td>
-                          </tr>
-                        ))}
+                      {getPendingOrders().map((order) => (
+                        <tr key={order.id} className="border-b hover:bg-gray-50">
+                          <td className="py-3 px-4 font-mono text-xs">
+                            {order.id?.substring(0, 8) || "N/A"}
+                          </td>
+                          <td className="py-3 px-4 font-mono text-sm">
+                            {order.trackingId}
+                          </td>
+                          <td className="py-3 px-4">{order.productType}</td>
+                          <td className="py-3 px-4">{order.quantity}</td>
+                          <td className="py-3 px-4">
+                            {order.timestamp ? formatDate(order.timestamp.toDate ? order.timestamp.toDate() : order.timestamp) : "N/A"}
+                          </td>
+                          <td className="py-3 px-4">{formatCurrency(order.totalAmount)}</td>
+                          <td className="py-3 px-4">
+                            <Button 
+                              size="sm" 
+                              variant="default" 
+                              onClick={() => handleRetryPayment(order)}
+                              disabled={processingPayment}
+                              className="text-xs"
+                            >
+                              {processingPayment ? (
+                                <>
+                                  <div className="mr-2 h-3 w-3 animate-spin rounded-full border-t-2 border-white"></div>
+                                  Processing...
+                                </>
+                              ) : (
+                                <>
+                                  <CreditCard className="h-3 w-3 mr-1" />
+                                  Complete Payment
+                                </>
+                              )}
+                            </Button>
+                          </td>
+                        </tr>
+                      ))}
                     </tbody>
                   </table>
                 </div>
