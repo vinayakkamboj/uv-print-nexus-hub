@@ -160,17 +160,6 @@ export default function Dashboard() {
     }
   };
 
-  const getProgressSteps = (currentStatus: string) => {
-    const steps = ['order_created', 'processing', 'quality_check', 'shipped', 'delivered'];
-    const currentIndex = steps.indexOf(currentStatus);
-    return steps.map((step, index) => ({
-      step,
-      isActive: index <= currentIndex,
-      isCompleted: index < currentIndex,
-      isCurrent: index === currentIndex
-    }));
-  };
-
   const handleDownloadInvoice = (order: SimpleOrderData) => {
     if (!order.id || order.paymentStatus !== 'paid') {
       toast({
@@ -488,52 +477,52 @@ export default function Dashboard() {
             </CardHeader>
             <CardContent>
               {/* Order Flow Visualization */}
-              <div className="mb-8 p-6 bg-gradient-to-r from-gray-50 to-gray-100 rounded-lg border">
-                <h3 className="text-lg font-semibold mb-6 text-center">Order Journey</h3>
+              <div className="mb-8 p-6 bg-gradient-to-r from-blue-50 to-green-50 rounded-lg border">
+                <h3 className="text-lg font-semibold mb-4 text-center">Order Journey</h3>
                 <div className="flex items-center justify-between max-w-4xl mx-auto">
                   <div className="flex flex-col items-center text-center">
-                    <div className="w-10 h-10 bg-gray-600 rounded-full flex items-center justify-center mb-2">
-                      <CheckCircle className="h-5 w-5 text-white" />
+                    <div className="w-12 h-12 bg-gray-600 rounded-full flex items-center justify-center mb-2">
+                      <CheckCircle className="h-6 w-6 text-white" />
                     </div>
                     <span className="text-sm font-medium">Order Created</span>
                     <span className="text-xs text-gray-500">Payment Confirmed</span>
                   </div>
                   
-                  <div className="flex-1 h-1 bg-gray-300 mx-3 rounded"></div>
+                  <div className="flex-1 h-0.5 bg-gray-300 mx-4"></div>
                   
                   <div className="flex flex-col items-center text-center">
-                    <div className="w-10 h-10 bg-gray-600 rounded-full flex items-center justify-center mb-2">
-                      <Package className="h-5 w-5 text-white" />
+                    <div className="w-12 h-12 bg-gray-600 rounded-full flex items-center justify-center mb-2">
+                      <Package className="h-6 w-6 text-white" />
                     </div>
                     <span className="text-sm font-medium">Processing</span>
                     <span className="text-xs text-gray-500">Design & Print</span>
                   </div>
                   
-                  <div className="flex-1 h-1 bg-gray-300 mx-3 rounded"></div>
+                  <div className="flex-1 h-0.5 bg-gray-300 mx-4"></div>
                   
                   <div className="flex flex-col items-center text-center">
-                    <div className="w-10 h-10 bg-gray-600 rounded-full flex items-center justify-center mb-2">
-                      <FileText className="h-5 w-5 text-white" />
+                    <div className="w-12 h-12 bg-gray-600 rounded-full flex items-center justify-center mb-2">
+                      <FileText className="h-6 w-6 text-white" />
                     </div>
                     <span className="text-sm font-medium">Quality Check</span>
                     <span className="text-xs text-gray-500">Review & Pack</span>
                   </div>
                   
-                  <div className="flex-1 h-1 bg-gray-300 mx-3 rounded"></div>
+                  <div className="flex-1 h-0.5 bg-gray-300 mx-4"></div>
                   
                   <div className="flex flex-col items-center text-center">
-                    <div className="w-10 h-10 bg-gray-600 rounded-full flex items-center justify-center mb-2">
-                      <Truck className="h-5 w-5 text-white" />
+                    <div className="w-12 h-12 bg-gray-600 rounded-full flex items-center justify-center mb-2">
+                      <Truck className="h-6 w-6 text-white" />
                     </div>
                     <span className="text-sm font-medium">Shipped</span>
                     <span className="text-xs text-gray-500">On the way</span>
                   </div>
                   
-                  <div className="flex-1 h-1 bg-gray-300 mx-3 rounded"></div>
+                  <div className="flex-1 h-0.5 bg-gray-300 mx-4"></div>
                   
                   <div className="flex flex-col items-center text-center">
-                    <div className="w-10 h-10 bg-gray-600 rounded-full flex items-center justify-center mb-2">
-                      <CheckCircle className="h-5 w-5 text-white" />
+                    <div className="w-12 h-12 bg-gray-600 rounded-full flex items-center justify-center mb-2">
+                      <CheckCircle className="h-6 w-6 text-white" />
                     </div>
                     <span className="text-sm font-medium">Delivered</span>
                     <span className="text-xs text-gray-500">Complete</span>
@@ -546,68 +535,62 @@ export default function Dashboard() {
                   <div className="animate-spin rounded-full h-12 w-12 border-t-4 border-primary border-solid"></div>
                 </div>
               ) : getExecutedOrders().length > 0 ? (
-                <div className="space-y-6">
-                  {getExecutedOrders().map((order) => {
-                    const progressSteps = getProgressSteps(order.executionStatus || 'order_created');
-                    return (
-                      <div key={order.id} className="border rounded-lg p-6 bg-white">
-                        {/* Order Header */}
-                        <div className="flex justify-between items-start mb-4">
-                          <div>
-                            <h3 className="font-semibold text-lg">Order #{order.trackingId}</h3>
-                            <p className="text-gray-600">{order.productType} - {order.quantity} units</p>
-                            <p className="text-sm text-gray-500">
-                              {order.timestamp ? formatDate(order.timestamp.toDate ? order.timestamp.toDate() : order.timestamp) : "N/A"}
-                            </p>
-                          </div>
-                          <div className="text-right">
-                            <p className="font-semibold text-lg">{formatCurrency(order.totalAmount)}</p>
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b">
+                        <th className="text-left py-3 px-4 font-medium">Order ID</th>
+                        <th className="text-left py-3 px-4 font-medium">Tracking ID</th>
+                        <th className="text-left py-3 px-4 font-medium">Product</th>
+                        <th className="text-left py-3 px-4 font-medium">Quantity</th>
+                        <th className="text-left py-3 px-4 font-medium">Date</th>
+                        <th className="text-left py-3 px-4 font-medium">Execution Status</th>
+                        <th className="text-left py-3 px-4 font-medium">Progress</th>
+                        <th className="text-left py-3 px-4 font-medium">Amount</th>
+                        <th className="text-left py-3 px-4 font-medium">Invoice</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {getExecutedOrders().map((order) => (
+                        <tr key={order.id} className="border-b hover:bg-gray-50">
+                          <td className="py-3 px-4 font-mono text-xs">
+                            {order.id?.substring(0, 8) || "N/A"}
+                          </td>
+                          <td className="py-3 px-4 font-mono text-sm">
+                            {order.trackingId}
+                          </td>
+                          <td className="py-3 px-4">{order.productType}</td>
+                          <td className="py-3 px-4">{order.quantity}</td>
+                          <td className="py-3 px-4">
+                            {order.timestamp ? formatDate(order.timestamp.toDate ? order.timestamp.toDate() : order.timestamp) : "N/A"}
+                          </td>
+                          <td className="py-3 px-4">
+                            <div className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getExecutionStatusColor(order.executionStatus || 'order_created')}`}>
+                              <span>{getExecutionStatusLabel(order.executionStatus || 'order_created')}</span>
+                            </div>
+                          </td>
+                          <td className="py-3 px-4">
+                            <div className="flex items-center space-x-2">
+                              <Progress value={order.executionProgress || 20} className="w-20" />
+                              <span className="text-xs text-gray-500">{order.executionProgress || 20}%</span>
+                            </div>
+                          </td>
+                          <td className="py-3 px-4">{formatCurrency(order.totalAmount)}</td>
+                          <td className="py-3 px-4">
                             <Button 
                               size="sm" 
                               variant="outline" 
                               onClick={() => handleDownloadInvoice(order)}
-                              className="mt-2"
+                              className="text-xs"
                             >
-                              <Download className="h-4 w-4 mr-2" />
-                              Invoice
+                              <Download className="h-3 w-3 mr-1" />
+                              Download
                             </Button>
-                          </div>
-                        </div>
-
-                        {/* Amazon-style Progress Flow */}
-                        <div className="flex items-center justify-between">
-                          {progressSteps.map((step, index) => (
-                            <div key={step.step} className="flex items-center flex-1">
-                              <div className="flex flex-col items-center">
-                                <div className={`w-8 h-8 rounded-full flex items-center justify-center mb-2 ${
-                                  step.isCompleted || step.isCurrent ? 'bg-green-500' : 'bg-gray-300'
-                                }`}>
-                                  {step.isCompleted ? (
-                                    <CheckCircle className="h-4 w-4 text-white" />
-                                  ) : step.isCurrent ? (
-                                    <div className="w-3 h-3 bg-white rounded-full"></div>
-                                  ) : (
-                                    <div className="w-3 h-3 bg-gray-500 rounded-full"></div>
-                                  )}
-                                </div>
-                                <span className={`text-xs font-medium text-center ${
-                                  step.isCompleted || step.isCurrent ? 'text-green-600' : 'text-gray-500'
-                                }`}>
-                                  {getExecutionStatusLabel(step.step)}
-                                </span>
-                              </div>
-                              
-                              {index < progressSteps.length - 1 && (
-                                <div className={`flex-1 h-1 mx-2 rounded ${
-                                  step.isCompleted ? 'bg-green-500' : 'bg-gray-300'
-                                }`}></div>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  })}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               ) : (
                 <div className="text-center py-8">
