@@ -132,13 +132,13 @@ export default function Dashboard() {
       case "pending_payment":
         return "bg-orange-100 text-orange-700";
       case "received":
-        return "bg-blue-100 text-blue-700";
+        return "bg-green-100 text-green-700";
       case "processing":
-        return "bg-yellow-100 text-yellow-700";
+        return "bg-blue-100 text-blue-700";
       case "printed":
         return "bg-purple-100 text-purple-700";
       case "shipped":
-        return "bg-green-100 text-green-700";
+        return "bg-indigo-100 text-indigo-700";
       case "delivered":
         return "bg-green-200 text-green-800";
       default:
@@ -151,7 +151,7 @@ export default function Dashboard() {
       case "pending_payment":
         return <CreditCard className="h-4 w-4" />;
       case "received":
-        return <Clock className="h-4 w-4" />;
+        return <CheckCircle className="h-4 w-4" />;
       case "processing":
         return <Package className="h-4 w-4" />;
       case "printed":
@@ -161,7 +161,7 @@ export default function Dashboard() {
       case "delivered":
         return <CheckCircle className="h-4 w-4" />;
       default:
-        return null;
+        return <Clock className="h-4 w-4" />;
     }
   };
 
@@ -481,6 +481,60 @@ export default function Dashboard() {
               </div>
             </CardHeader>
             <CardContent>
+              {/* Order Flow Visualization */}
+              <div className="mb-8 p-6 bg-gradient-to-r from-blue-50 to-green-50 rounded-lg border">
+                <h3 className="text-lg font-semibold mb-4 text-center">Order Journey</h3>
+                <div className="flex items-center justify-between max-w-4xl mx-auto">
+                  <div className="flex flex-col items-center text-center">
+                    <div className="w-12 h-12 bg-green-500 rounded-full flex items-center justify-center mb-2">
+                      <CheckCircle className="h-6 w-6 text-white" />
+                    </div>
+                    <span className="text-sm font-medium">Order Created</span>
+                    <span className="text-xs text-gray-500">Payment Confirmed</span>
+                  </div>
+                  
+                  <div className="flex-1 h-0.5 bg-gray-300 mx-4"></div>
+                  
+                  <div className="flex flex-col items-center text-center">
+                    <div className="w-12 h-12 bg-blue-500 rounded-full flex items-center justify-center mb-2">
+                      <Package className="h-6 w-6 text-white" />
+                    </div>
+                    <span className="text-sm font-medium">Processing</span>
+                    <span className="text-xs text-gray-500">Design & Print</span>
+                  </div>
+                  
+                  <div className="flex-1 h-0.5 bg-gray-300 mx-4"></div>
+                  
+                  <div className="flex flex-col items-center text-center">
+                    <div className="w-12 h-12 bg-purple-500 rounded-full flex items-center justify-center mb-2">
+                      <FileText className="h-6 w-6 text-white" />
+                    </div>
+                    <span className="text-sm font-medium">Quality Check</span>
+                    <span className="text-xs text-gray-500">Review & Pack</span>
+                  </div>
+                  
+                  <div className="flex-1 h-0.5 bg-gray-300 mx-4"></div>
+                  
+                  <div className="flex flex-col items-center text-center">
+                    <div className="w-12 h-12 bg-indigo-500 rounded-full flex items-center justify-center mb-2">
+                      <Truck className="h-6 w-6 text-white" />
+                    </div>
+                    <span className="text-sm font-medium">Shipped</span>
+                    <span className="text-xs text-gray-500">On the way</span>
+                  </div>
+                  
+                  <div className="flex-1 h-0.5 bg-gray-300 mx-4"></div>
+                  
+                  <div className="flex flex-col items-center text-center">
+                    <div className="w-12 h-12 bg-green-600 rounded-full flex items-center justify-center mb-2">
+                      <CheckCircle className="h-6 w-6 text-white" />
+                    </div>
+                    <span className="text-sm font-medium">Delivered</span>
+                    <span className="text-xs text-gray-500">Complete</span>
+                  </div>
+                </div>
+              </div>
+
               {loading ? (
                 <div className="flex justify-center p-6">
                   <div className="animate-spin rounded-full h-12 w-12 border-t-4 border-primary border-solid"></div>
