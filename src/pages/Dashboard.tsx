@@ -574,7 +574,7 @@ export default function Dashboard() {
                           </div>
                         </div>
 
-                        {/* Progress Flow */}
+                        {/* Amazon-style Progress Flow */}
                         <div className="flex items-center justify-between">
                           {progressSteps.map((step, index) => (
                             <div key={step.step} className="flex items-center flex-1">
