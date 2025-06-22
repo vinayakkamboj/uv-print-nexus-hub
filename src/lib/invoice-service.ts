@@ -1,3 +1,4 @@
+
 import { db } from './firebase';
 import { collection, addDoc, doc, updateDoc, getDoc, Timestamp, query, where, getDocs, orderBy, limit } from 'firebase/firestore';
 
@@ -141,7 +142,12 @@ export const updateOrderExecutionStatus = async (orderId: string, executionStatu
         break;
     }
     
-    const updateData = {
+    const updateData: {
+      executionStatus: SimpleOrderData['executionStatus'];
+      executionProgress: number;
+      lastUpdated: Timestamp;
+      status?: SimpleOrderData['status'];
+    } = {
       executionStatus,
       executionProgress,
       lastUpdated: Timestamp.now()
