@@ -9,9 +9,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Progress } from "@/components/ui/progress";
 import { formatDate, formatCurrency, isValidGSTIN } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
-import { ShoppingBag, FileText, Settings, Clock, Package, CheckCircle, Truck, CreditCard, Download, AlertCircle } from "lucide-react";
+import { ShoppingBag, FileText, Settings, Clock, Package, CheckCircle, Truck, CreditCard, Download, AlertCircle, Play } from "lucide-react";
 import { getUserOrders, SimpleOrderData, testDatabaseConnection } from "@/lib/invoice-service";
 import { initializeRazorpay, createRazorpayOrder, processPayment } from "@/lib/payment-service";
 import { updateOrderAfterPayment } from "@/lib/invoice-service";
@@ -56,7 +57,6 @@ export default function Dashboard() {
       setLoading(true);
       console.log("🔄 Fetching orders for user:", currentUserId);
       
-      // Test database connection
       setDbStatus('checking');
       const dbConnected = await testDatabaseConnection();
       
@@ -108,7 +108,6 @@ export default function Dashboard() {
     if (currentUserId) {
       fetchUserOrders();
     } else {
-      // Wait for auth state to settle
       const timeout = setTimeout(() => {
         const userId = userData?.uid || user?.uid;
         if (userId) {
@@ -127,41 +126,37 @@ export default function Dashboard() {
     }
   }, [userData, user]);
 
-  const getStatusColor = (status: string) => {
+  const getExecutionStatusLabel = (status: string) => {
     switch (status) {
-      case "pending_payment":
-        return "bg-orange-100 text-orange-700";
-      case "received":
-        return "bg-green-100 text-green-700";
-      case "processing":
-        return "bg-blue-100 text-blue-700";
-      case "printed":
-        return "bg-purple-100 text-purple-700";
-      case "shipped":
-        return "bg-indigo-100 text-indigo-700";
-      case "delivered":
-        return "bg-green-200 text-green-800";
+      case 'order_created':
+        return 'Order Created';
+      case 'processing':
+        return 'Processing';
+      case 'quality_check':
+        return 'Quality Check';
+      case 'shipped':
+        return 'Shipped';
+      case 'delivered':
+        return 'Delivered';
       default:
-        return "bg-gray-100 text-gray-700";
+        return 'Order Created';
     }
   };
 
-  const getStatusIcon = (status: string) => {
+  const getExecutionStatusColor = (status: string) => {
     switch (status) {
-      case "pending_payment":
-        return <CreditCard className="h-4 w-4" />;
-      case "received":
-        return <CheckCircle className="h-4 w-4" />;
-      case "processing":
-        return <Package className="h-4 w-4" />;
-      case "printed":
-        return <CheckCircle className="h-4 w-4" />;
-      case "shipped":
-        return <Truck className="h-4 w-4" />;
-      case "delivered":
-        return <CheckCircle className="h-4 w-4" />;
+      case 'order_created':
+        return 'bg-blue-100 text-blue-700';
+      case 'processing':
+        return 'bg-yellow-100 text-yellow-700';
+      case 'quality_check':
+        return 'bg-purple-100 text-purple-700';
+      case 'shipped':
+        return 'bg-indigo-100 text-indigo-700';
+      case 'delivered':
+        return 'bg-green-100 text-green-700';
       default:
-        return <Clock className="h-4 w-4" />;
+        return 'bg-gray-100 text-gray-700';
     }
   };
 
@@ -385,12 +380,12 @@ export default function Dashboard() {
     return orders.filter(order => order.paymentStatus === "pending");
   };
 
-  const getMyOrders = () => {
+  const getExecutedOrders = () => {
     return orders.filter(order => order.paymentStatus === "paid");
   };
 
   const getCompletedOrders = () => {
-    return orders.filter(order => order.status === "delivered");
+    return orders.filter(order => order.executionStatus === "delivered");
   };
 
   return (
@@ -445,13 +440,13 @@ export default function Dashboard() {
 
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-lg font-medium">My Orders</CardTitle>
-            <CardDescription>Successfully paid orders</CardDescription>
+            <CardTitle className="text-lg font-medium">Executed Orders</CardTitle>
+            <CardDescription>Orders in execution phase</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="flex items-center">
-              <CheckCircle className="h-8 w-8 text-primary mr-3" />
-              <span className="text-3xl font-bold">{getMyOrders().length}</span>
+              <Play className="h-8 w-8 text-primary mr-3" />
+              <span className="text-3xl font-bold">{getExecutedOrders().length}</span>
             </div>
           </CardContent>
         </Card>
@@ -486,7 +481,7 @@ export default function Dashboard() {
                 <h3 className="text-lg font-semibold mb-4 text-center">Order Journey</h3>
                 <div className="flex items-center justify-between max-w-4xl mx-auto">
                   <div className="flex flex-col items-center text-center">
-                    <div className="w-12 h-12 bg-green-500 rounded-full flex items-center justify-center mb-2">
+                    <div className="w-12 h-12 bg-gray-600 rounded-full flex items-center justify-center mb-2">
                       <CheckCircle className="h-6 w-6 text-white" />
                     </div>
                     <span className="text-sm font-medium">Order Created</span>
@@ -496,7 +491,7 @@ export default function Dashboard() {
                   <div className="flex-1 h-0.5 bg-gray-300 mx-4"></div>
                   
                   <div className="flex flex-col items-center text-center">
-                    <div className="w-12 h-12 bg-blue-500 rounded-full flex items-center justify-center mb-2">
+                    <div className="w-12 h-12 bg-gray-600 rounded-full flex items-center justify-center mb-2">
                       <Package className="h-6 w-6 text-white" />
                     </div>
                     <span className="text-sm font-medium">Processing</span>
@@ -506,7 +501,7 @@ export default function Dashboard() {
                   <div className="flex-1 h-0.5 bg-gray-300 mx-4"></div>
                   
                   <div className="flex flex-col items-center text-center">
-                    <div className="w-12 h-12 bg-purple-500 rounded-full flex items-center justify-center mb-2">
+                    <div className="w-12 h-12 bg-gray-600 rounded-full flex items-center justify-center mb-2">
                       <FileText className="h-6 w-6 text-white" />
                     </div>
                     <span className="text-sm font-medium">Quality Check</span>
@@ -516,7 +511,7 @@ export default function Dashboard() {
                   <div className="flex-1 h-0.5 bg-gray-300 mx-4"></div>
                   
                   <div className="flex flex-col items-center text-center">
-                    <div className="w-12 h-12 bg-indigo-500 rounded-full flex items-center justify-center mb-2">
+                    <div className="w-12 h-12 bg-gray-600 rounded-full flex items-center justify-center mb-2">
                       <Truck className="h-6 w-6 text-white" />
                     </div>
                     <span className="text-sm font-medium">Shipped</span>
@@ -526,7 +521,7 @@ export default function Dashboard() {
                   <div className="flex-1 h-0.5 bg-gray-300 mx-4"></div>
                   
                   <div className="flex flex-col items-center text-center">
-                    <div className="w-12 h-12 bg-green-600 rounded-full flex items-center justify-center mb-2">
+                    <div className="w-12 h-12 bg-gray-600 rounded-full flex items-center justify-center mb-2">
                       <CheckCircle className="h-6 w-6 text-white" />
                     </div>
                     <span className="text-sm font-medium">Delivered</span>
@@ -539,7 +534,7 @@ export default function Dashboard() {
                 <div className="flex justify-center p-6">
                   <div className="animate-spin rounded-full h-12 w-12 border-t-4 border-primary border-solid"></div>
                 </div>
-              ) : getMyOrders().length > 0 ? (
+              ) : getExecutedOrders().length > 0 ? (
                 <div className="overflow-x-auto">
                   <table className="w-full">
                     <thead>
@@ -549,13 +544,14 @@ export default function Dashboard() {
                         <th className="text-left py-3 px-4 font-medium">Product</th>
                         <th className="text-left py-3 px-4 font-medium">Quantity</th>
                         <th className="text-left py-3 px-4 font-medium">Date</th>
-                        <th className="text-left py-3 px-4 font-medium">Status</th>
+                        <th className="text-left py-3 px-4 font-medium">Execution Status</th>
+                        <th className="text-left py-3 px-4 font-medium">Progress</th>
                         <th className="text-left py-3 px-4 font-medium">Amount</th>
                         <th className="text-left py-3 px-4 font-medium">Invoice</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {getMyOrders().map((order) => (
+                      {getExecutedOrders().map((order) => (
                         <tr key={order.id} className="border-b hover:bg-gray-50">
                           <td className="py-3 px-4 font-mono text-xs">
                             {order.id?.substring(0, 8) || "N/A"}
@@ -569,11 +565,14 @@ export default function Dashboard() {
                             {order.timestamp ? formatDate(order.timestamp.toDate ? order.timestamp.toDate() : order.timestamp) : "N/A"}
                           </td>
                           <td className="py-3 px-4">
-                            <div className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(order.status)}`}>
-                              {getStatusIcon(order.status)}
-                              <span className="ml-1 capitalize">
-                                {order.status.replace('_', ' ')}
-                              </span>
+                            <div className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getExecutionStatusColor(order.executionStatus || 'order_created')}`}>
+                              <span>{getExecutionStatusLabel(order.executionStatus || 'order_created')}</span>
+                            </div>
+                          </td>
+                          <td className="py-3 px-4">
+                            <div className="flex items-center space-x-2">
+                              <Progress value={order.executionProgress || 20} className="w-20" />
+                              <span className="text-xs text-gray-500">{order.executionProgress || 20}%</span>
                             </div>
                           </td>
                           <td className="py-3 px-4">{formatCurrency(order.totalAmount)}</td>

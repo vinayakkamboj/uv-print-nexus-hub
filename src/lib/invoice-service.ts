@@ -1,4 +1,3 @@
-
 import { db } from './firebase';
 import { collection, addDoc, doc, updateDoc, getDoc, Timestamp, query, where, getDocs, orderBy, limit } from 'firebase/firestore';
 
@@ -19,6 +18,9 @@ export interface SimpleOrderData {
   trackingId: string;
   status: 'pending_payment' | 'received' | 'processing' | 'printed' | 'shipped' | 'delivered';
   paymentStatus: 'pending' | 'paid' | 'failed';
+  // New execution status system
+  executionStatus: 'order_created' | 'processing' | 'quality_check' | 'shipped' | 'delivered';
+  executionProgress: number; // 0-100 percentage
   timestamp: any;
   razorpayPaymentId?: string;
   paymentCompletedAt?: any;
@@ -30,7 +32,6 @@ export const testDatabaseConnection = async (): Promise<boolean> => {
   try {
     console.log("🧪 Testing database connection...");
     
-    // Simple test query with limit to avoid large data fetch
     const testQuery = query(collection(db, 'orders'), limit(1));
     await getDocs(testQuery);
     
@@ -42,20 +43,20 @@ export const testDatabaseConnection = async (): Promise<boolean> => {
   }
 };
 
-export const createOrder = async (orderData: Omit<SimpleOrderData, 'id' | 'status' | 'paymentStatus' | 'timestamp' | 'lastUpdated'>): Promise<{ success: boolean; orderId?: string; message?: string }> => {
+export const createOrder = async (orderData: Omit<SimpleOrderData, 'id' | 'status' | 'paymentStatus' | 'timestamp' | 'lastUpdated' | 'executionStatus' | 'executionProgress'>): Promise<{ success: boolean; orderId?: string; message?: string }> => {
   try {
     console.log("🔄 Creating order...");
     
-    // Validate required fields
     if (!orderData.userId || !orderData.customerEmail) {
       return { success: false, message: "Missing required fields" };
     }
     
-    // Create order with default status
     const orderWithDefaults: Omit<SimpleOrderData, 'id'> = {
       ...orderData,
       status: 'pending_payment',
       paymentStatus: 'pending',
+      executionStatus: 'order_created',
+      executionProgress: 0,
       timestamp: Timestamp.now(),
       lastUpdated: Timestamp.now()
     };
@@ -95,6 +96,8 @@ export const updateOrderAfterPayment = async (orderId: string, razorpayPaymentId
     const updateData = {
       status: 'received',
       paymentStatus: 'paid',
+      executionStatus: 'order_created',
+      executionProgress: 20,
       razorpayPaymentId: razorpayPaymentId,
       paymentCompletedAt: Timestamp.now(),
       invoiceId: invoiceId,
@@ -109,6 +112,54 @@ export const updateOrderAfterPayment = async (orderId: string, razorpayPaymentId
   } catch (error) {
     console.error("❌ Error updating order:", error);
     return { success: false, message: "Failed to update order" };
+  }
+};
+
+export const updateOrderExecutionStatus = async (orderId: string, executionStatus: SimpleOrderData['executionStatus']): Promise<{ success: boolean; message?: string }> => {
+  try {
+    console.log("🔄 Updating order execution status:", orderId, executionStatus);
+    
+    const orderRef = doc(db, 'orders', orderId);
+    
+    // Calculate progress based on status
+    let executionProgress = 0;
+    switch (executionStatus) {
+      case 'order_created':
+        executionProgress = 20;
+        break;
+      case 'processing':
+        executionProgress = 40;
+        break;
+      case 'quality_check':
+        executionProgress = 60;
+        break;
+      case 'shipped':
+        executionProgress = 80;
+        break;
+      case 'delivered':
+        executionProgress = 100;
+        break;
+    }
+    
+    const updateData = {
+      executionStatus,
+      executionProgress,
+      lastUpdated: Timestamp.now()
+    };
+    
+    // Update main status for delivered orders
+    if (executionStatus === 'delivered') {
+      updateData.status = 'delivered';
+    }
+    
+    await updateDoc(orderRef, updateData);
+    console.log("✅ Order execution status updated successfully");
+    
+    return { success: true };
+    
+  } catch (error) {
+    console.error("❌ Error updating order execution status:", error);
+    return { success: false, message: "Failed to update execution status" };
   }
 };
 
@@ -152,7 +203,6 @@ export const getUserOrders = async (userId: string): Promise<SimpleOrderData[]> 
       return [];
     }
     
-    // Simple query without orderBy first to avoid issues
     const ordersQuery = query(
       collection(db, 'orders'),
       where('userId', '==', userId)
@@ -170,11 +220,13 @@ export const getUserOrders = async (userId: string): Promise<SimpleOrderData[]> 
       const data = doc.data();
       return {
         id: doc.id,
-        ...data
+        ...data,
+        // Ensure backward compatibility
+        executionStatus: data.executionStatus || 'order_created',
+        executionProgress: data.executionProgress || 20
       };
     }) as SimpleOrderData[];
     
-    // Sort in JavaScript instead of Firestore to avoid indexing issues
     orders.sort((a, b) => {
       if (!a.timestamp || !b.timestamp) return 0;
       if (typeof a.timestamp === 'object' && a.timestamp.seconds) {
