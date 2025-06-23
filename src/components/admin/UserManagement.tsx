@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -12,8 +13,6 @@ import { Search, Users, Eye, Mail, Phone, Building, Package, History, User } fro
 import { collection, getDocs, doc, updateDoc, orderBy, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { SimpleOrderData } from "@/lib/invoice-service";
-import { fetchAllUsers } from "@/lib/admin-service";
-import type { UserProfile } from "@/lib/admin-service";
 
 interface UserData {
   uid: string;
@@ -29,11 +28,13 @@ interface UserData {
 }
 
 const UserManagement = () => {
-  const [users, setUsers] = useState<UserProfile[]>([]);
-  const [filteredUsers, setFilteredUsers] = useState<UserProfile[]>([]);
+  const [users, setUsers] = useState<UserData[]>([]);
+  const [filteredUsers, setFilteredUsers] = useState<UserData[]>([]);
+  const [userOrders, setUserOrders] = useState<SimpleOrderData[]>([]);
   const [loading, setLoading] = useState(true);
+  const [ordersLoading, setOrdersLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
-  const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
+  const [selectedUser, setSelectedUser] = useState<UserData | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -46,8 +47,34 @@ const UserManagement = () => {
 
   const fetchUsers = async () => {
     try {
-      const usersData = await fetchAllUsers();
-      setUsers(usersData);
+      const usersSnapshot = await getDocs(
+        query(collection(db, "users"), orderBy("createdAt", "desc"))
+      );
+      
+      const usersData = usersSnapshot.docs.map(doc => ({
+        uid: doc.id,
+        ...doc.data()
+      })) as UserData[];
+
+      // Fetch order stats for each user
+      const ordersSnapshot = await getDocs(collection(db, "orders"));
+      const orders: SimpleOrderData[] = ordersSnapshot.docs.map(doc => ({ 
+        id: doc.id, 
+        ...doc.data() 
+      })) as SimpleOrderData[];
+
+      const usersWithStats = usersData.map(user => {
+        const userOrders = orders.filter(order => order.userId === user.uid);
+        const totalSpent = userOrders.reduce((sum, order) => sum + (order.totalAmount || 0), 0);
+        
+        return {
+          ...user,
+          totalOrders: userOrders.length,
+          totalSpent
+        };
+      });
+      
+      setUsers(usersWithStats);
     } catch (error) {
       console.error("Error fetching users:", error);
       toast({
@@ -57,6 +84,34 @@ const UserManagement = () => {
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchUserOrders = async (userId: string) => {
+    setOrdersLoading(true);
+    try {
+      const ordersQuery = query(
+        collection(db, "orders"),
+        where("userId", "==", userId),
+        orderBy("timestamp", "desc")
+      );
+      
+      const ordersSnapshot = await getDocs(ordersQuery);
+      const orders = ordersSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as SimpleOrderData[];
+      
+      setUserOrders(orders);
+    } catch (error) {
+      console.error("Error fetching user orders:", error);
+      toast({
+        title: "Error",
+        description: "Failed to fetch user orders",
+        variant: "destructive"
+      });
+    } finally {
+      setOrdersLoading(false);
     }
   };
 
@@ -97,6 +152,11 @@ const UserManagement = () => {
     );
   };
 
+  const handleUser = (user: UserData) => {
+    setSelectedUser(user);
+    fetchUserOrders(user.uid);
+  };
+
   if (loading) {
     return (
       <Card>
@@ -122,12 +182,12 @@ const UserManagement = () => {
           User Management
         </CardTitle>
         <CardDescription>
-          Manage customer accounts - view profiles, order history, and user details
+          Manage customer accounts and view detailed user information with order history
         </CardDescription>
       </CardHeader>
       <CardContent>
         {/* Search */}
-        <div className="flex flex-col lg:flex-row gap-4 mb-6">
+        <div className="flex flex-col sm:flex-row gap-4 mb-6">
           <div className="flex-1">
             <Label htmlFor="search">Search Users</Label>
             <div className="relative">
@@ -144,216 +204,211 @@ const UserManagement = () => {
         </div>
 
         {/* Users Table */}
-        <div className="border rounded-lg overflow-hidden">
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="min-w-[150px]">Name</TableHead>
-                  <TableHead className="min-w-[200px]">Email</TableHead>
-                  <TableHead className="min-w-[120px]">Phone</TableHead>
-                  <TableHead className="min-w-[150px]">GST Number</TableHead>
-                  <TableHead className="min-w-[80px]">Orders</TableHead>
-                  <TableHead className="min-w-[100px]">Total Spent</TableHead>
-                  <TableHead className="min-w-[100px]">Joined</TableHead>
-                  <TableHead className="min-w-[80px]">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filteredUsers.map((user) => (
-                  <TableRow key={user.uid}>
-                    <TableCell>
+        <div className="border rounded-lg">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Name</TableHead>
+                <TableHead>Email</TableHead>
+                <TableHead>Phone</TableHead>
+                <TableHead>GST Number</TableHead>
+                <TableHead>Orders</TableHead>
+                <TableHead>Total Spent</TableHead>
+                <TableHead>Joined</TableHead>
+                <TableHead>Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredUsers.map((user) => (
+                <TableRow key={user.uid}>
+                  <TableCell>
+                    <div className="flex items-center gap-2">
+                      <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center">
+                        <span className="text-sm font-medium text-blue-600">
+                          {user.name?.charAt(0)?.toUpperCase()}
+                        </span>
+                      </div>
+                      <span className="font-medium">{user.name}</span>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-2">
+                      <Mail className="h-4 w-4 text-gray-400" />
+                      {user.email}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    {user.phone ? (
                       <div className="flex items-center gap-2">
-                        <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
-                          <span className="text-sm font-medium text-blue-600">
-                            {user.name?.charAt(0)?.toUpperCase()}
-                          </span>
-                        </div>
-                        <span className="font-medium truncate">{user.name}</span>
+                        <Phone className="h-4 w-4 text-gray-400" />
+                        {user.phone}
                       </div>
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-2 min-w-0">
-                        <Mail className="h-4 w-4 text-gray-400 shrink-0" />
-                        <span className="truncate">{user.email}</span>
+                    ) : (
+                      <span className="text-gray-400">-</span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {user.gstNumber ? (
+                      <div className="flex items-center gap-2">
+                        <Building className="h-4 w-4 text-gray-400" />
+                        <span className="font-mono text-sm">{user.gstNumber}</span>
                       </div>
-                    </TableCell>
-                    <TableCell>
-                      {user.phone ? (
-                        <div className="flex items-center gap-2">
-                          <Phone className="h-4 w-4 text-gray-400 shrink-0" />
-                          <span className="truncate">{user.phone}</span>
-                        </div>
-                      ) : (
-                        <span className="text-gray-400">-</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {user.gstNumber ? (
-                        <div className="flex items-center gap-2 min-w-0">
-                          <Building className="h-4 w-4 text-gray-400 shrink-0" />
-                          <span className="font-mono text-sm truncate">{user.gstNumber}</span>
-                        </div>
-                      ) : (
-                        <span className="text-gray-400">-</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="secondary">
-                        {user.totalOrders}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="font-semibold">
-                      ₹{user.totalSpent.toLocaleString()}
-                    </TableCell>
-                    <TableCell className="text-sm">
-                      {user.createdAt ? 
-                        new Date(user.createdAt.seconds ? user.createdAt.seconds * 1000 : user.createdAt).toLocaleDateString() 
-                        : 'N/A'
-                      }
-                    </TableCell>
-                    <TableCell>
-                      <Dialog>
-                        <DialogTrigger asChild>
-                          <Button variant="ghost" size="sm" onClick={() => setSelectedUser(user)}>
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                        </DialogTrigger>
-                        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-                          <DialogHeader>
-                            <DialogTitle className="flex items-center gap-2">
-                              <User className="h-5 w-5" />
-                              User Profile - {selectedUser?.name}
-                            </DialogTitle>
-                            <DialogDescription>
-                              Complete profile and order history for {selectedUser?.name}
-                            </DialogDescription>
-                          </DialogHeader>
-                          {selectedUser && (
-                            <Tabs defaultValue="profile" className="w-full">
-                              <TabsList className="grid w-full grid-cols-2">
-                                <TabsTrigger value="profile">Profile Information</TabsTrigger>
-                                <TabsTrigger value="orders">Order History ({selectedUser.totalOrders})</TabsTrigger>
-                              </TabsList>
-                              
-                              <TabsContent value="profile" className="space-y-4">
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                  <div>
-                                    <Label>Full Name</Label>
-                                    <p className="font-medium">{selectedUser.name}</p>
-                                  </div>  
-                                  <div>
-                                    <Label>Email Address</Label>
-                                    <p className="font-medium break-all">{selectedUser.email}</p>
-                                  </div>
-                                  <div>
-                                    <Label>Phone Number</Label>
-                                    <p className="font-medium">{selectedUser.phone || 'Not provided'}</p>
-                                  </div>
-                                  <div>
-                                    <Label>GST Number</Label>
-                                    <p className="font-medium font-mono">{selectedUser.gstNumber || 'Not provided'}</p>
-                                  </div>
-                                  <div>
-                                    <Label>Total Orders</Label>
-                                    <p className="font-medium">{selectedUser.totalOrders}</p>
-                                  </div>
-                                  <div>
-                                    <Label>Total Spent</Label>
-                                    <p className="font-medium">₹{selectedUser.totalSpent.toLocaleString()}</p>
-                                  </div>
-                                </div>
-                                {selectedUser.address && (
-                                  <div>
-                                    <Label>Address</Label>
-                                    <p className="font-medium">{selectedUser.address}</p>
-                                  </div>
-                                )}
+                    ) : (
+                      <span className="text-gray-400">-</span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="secondary">
+                      {user.totalOrders || 0}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="font-semibold">
+                    ₹{(user.totalSpent || 0).toLocaleString()}
+                  </TableCell>
+                  <TableCell>
+                    {user.createdAt ? 
+                      new Date(user.createdAt.seconds ? user.createdAt.seconds * 1000 : user.createdAt).toLocaleDateString() 
+                      : 'N/A'
+                    }
+                  </TableCell>
+                  <TableCell>
+                    <Dialog>
+                      <DialogTrigger asChild>
+                        <Button variant="ghost" size="sm" onClick={() => handleUser(user)}>
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+                        <DialogHeader>
+                          <DialogTitle className="flex items-center gap-2">
+                            <User className="h-5 w-5" />
+                            User Details - {selectedUser?.name}
+                          </DialogTitle>
+                          <DialogDescription>
+                            Complete profile and order history for {selectedUser?.name}
+                          </DialogDescription>
+                        </DialogHeader>
+                        {selectedUser && (
+                          <Tabs defaultValue="profile" className="w-full">
+                            <TabsList className="grid w-full grid-cols-2">
+                              <TabsTrigger value="profile">Profile Information</TabsTrigger>
+                              <TabsTrigger value="orders">Order History ({userOrders.length})</TabsTrigger>
+                            </TabsList>
+                            
+                            <TabsContent value="profile" className="space-y-4">
+                              <div className="grid grid-cols-2 gap-4">
                                 <div>
-                                  <Label>Account Created</Label>
-                                  <p className="font-medium">
-                                    {selectedUser.createdAt ? 
-                                      new Date(selectedUser.createdAt.seconds ? selectedUser.createdAt.seconds * 1000 : selectedUser.createdAt).toLocaleString() 
-                                      : 'N/A'
-                                    }
-                                  </p>
+                                  <Label>Full Name</Label>
+                                  <p className="font-medium">{selectedUser.name}</p>
+                                </div>  
+                                <div>
+                                  <Label>Email Address</Label>
+                                  <p className="font-medium">{selectedUser.email}</p>
                                 </div>
-                              </TabsContent>
-                              
-                              <TabsContent value="orders">
-                                {selectedUser.recentOrders.length > 0 ? (
-                                  <div className="space-y-4">
-                                    <div className="border rounded-lg overflow-hidden">
-                                      <div className="overflow-x-auto">
-                                        <Table>
-                                          <TableHeader>
-                                            <TableRow>
-                                              <TableHead className="min-w-[100px]">Order ID</TableHead>
-                                              <TableHead className="min-w-[120px]">Product</TableHead>
-                                              <TableHead className="min-w-[100px]">Amount</TableHead>
-                                              <TableHead className="min-w-[100px]">Status</TableHead>
-                                              <TableHead className="min-w-[100px]">Payment</TableHead>
-                                              <TableHead className="min-w-[100px]">Date</TableHead>
-                                            </TableRow>
-                                          </TableHeader>
-                                          <TableBody>
-                                            {selectedUser.recentOrders.map((order) => (
-                                              <TableRow key={order.id}>
-                                                <TableCell className="font-mono text-sm">
-                                                  {order.trackingId || order.id?.substring(0, 8) + '...'}
-                                                </TableCell>
-                                                <TableCell>
-                                                  <div>
-                                                    <p className="font-medium">{order.productType}</p>
-                                                    <p className="text-sm text-gray-500">Qty: {order.quantity}</p>
-                                                  </div>
-                                                </TableCell>
-                                                <TableCell className="font-semibold">
-                                                  ₹{order.totalAmount?.toLocaleString()}
-                                                </TableCell>
-                                                <TableCell>
-                                                  {getStatusBadge(order.status || 'pending')}
-                                                </TableCell>
-                                                <TableCell>
-                                                  <Badge variant={order.paymentStatus === 'paid' ? 'default' : 'secondary'}>
-                                                    {order.paymentStatus || 'pending'}
-                                                  </Badge>
-                                                </TableCell>
-                                                <TableCell className="text-sm">
-                                                  {order.timestamp ? 
-                                                    new Date(order.timestamp.seconds ? order.timestamp.seconds * 1000 : order.timestamp).toLocaleDateString() 
-                                                    : 'N/A'
-                                                  }
-                                                </TableCell>
-                                              </TableRow>
-                                            ))}
-                                          </TableBody>
-                                        </Table>
-                                      </div>
-                                    </div>
-                                    {selectedUser.totalOrders > 5 && (
-                                      <p className="text-sm text-gray-500 text-center">
-                                        Showing recent 5 orders out of {selectedUser.totalOrders} total orders
-                                      </p>
-                                    )}
+                                <div>
+                                  <Label>Phone Number</Label>
+                                  <p className="font-medium">{selectedUser.phone || 'Not provided'}</p>
+                                </div>
+                                <div>
+                                  <Label>GST Number</Label>
+                                  <p className="font-medium font-mono">{selectedUser.gstNumber || 'Not provided'}</p>
+                                </div>
+                                <div>
+                                  <Label>Total Orders</Label>
+                                  <p className="font-medium">{selectedUser.totalOrders || 0}</p>
+                                </div>
+                                <div>
+                                  <Label>Total Spent</Label>
+                                  <p className="font-medium">₹{(selectedUser.totalSpent || 0).toLocaleString()}</p>
+                                </div>
+                              </div>
+                              {selectedUser.address && (
+                                <div>
+                                  <Label>Address</Label>
+                                  <p className="font-medium">{selectedUser.address}</p>
+                                </div>
+                              )}
+                              <div>
+                                <Label>Account Created</Label>
+                                <p className="font-medium">
+                                  {selectedUser.createdAt ? 
+                                    new Date(selectedUser.createdAt.seconds ? selectedUser.createdAt.seconds * 1000 : selectedUser.createdAt).toLocaleString() 
+                                    : 'N/A'
+                                  }
+                                </p>
+                              </div>
+                            </TabsContent>
+                            
+                            <TabsContent value="orders">
+                              {ordersLoading ? (
+                                <div className="flex justify-center py-8">
+                                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                                </div>
+                              ) : userOrders.length > 0 ? (
+                                <div className="space-y-4">
+                                  <div className="border rounded-lg">
+                                    <Table>
+                                      <TableHeader>
+                                        <TableRow>
+                                          <TableHead>Order ID</TableHead>
+                                          <TableHead>Product</TableHead>
+                                          <TableHead>Amount</TableHead>
+                                          <TableHead>Status</TableHead>
+                                          <TableHead>Payment</TableHead>
+                                          <TableHead>Date</TableHead>
+                                        </TableRow>
+                                      </TableHeader>
+                                      <TableBody>
+                                        {userOrders.map((order) => (
+                                          <TableRow key={order.id}>
+                                            <TableCell className="font-mono text-sm">
+                                              {order.trackingId || order.id?.substring(0, 8) + '...'}
+                                            </TableCell>
+                                            <TableCell>
+                                              <div>
+                                                <p className="font-medium">{order.productType}</p>
+                                                <p className="text-sm text-gray-500">Qty: {order.quantity}</p>
+                                              </div>
+                                            </TableCell>
+                                            <TableCell className="font-semibold">
+                                              ₹{order.totalAmount?.toLocaleString()}
+                                            </TableCell>
+                                            <TableCell>
+                                              {getStatusBadge(order.status || 'pending')}
+                                            </TableCell>
+                                            <TableCell>
+                                              <Badge variant={order.paymentStatus === 'paid' ? 'default' : 'secondary'}>
+                                                {order.paymentStatus || 'pending'}
+                                              </Badge>
+                                            </TableCell>
+                                            <TableCell>
+                                              {order.timestamp ? 
+                                                new Date(order.timestamp.seconds ? order.timestamp.seconds * 1000 : order.timestamp).toLocaleDateString() 
+                                                : 'N/A'
+                                              }
+                                            </TableCell>
+                                          </TableRow>
+                                        ))}
+                                      </TableBody>
+                                    </Table>
                                   </div>
-                                ) : (
-                                  <div className="text-center py-8 text-gray-500">
-                                    <Package className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-                                    <p>No orders found for this user</p>
-                                  </div>
-                                )}
-                              </TabsContent>
-                            </Tabs>
-                          )}
-                        </DialogContent>
-                      </Dialog>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+                                </div>
+                              ) : (
+                                <div className="text-center py-8 text-gray-500">
+                                  <Package className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                                  <p>No orders found for this user</p>
+                                </div>
+                              )}
+                            </TabsContent>
+                          </Tabs>
+                        )}
+                      </DialogContent>
+                    </Dialog>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         </div>
 
         {filteredUsers.length === 0 && (
