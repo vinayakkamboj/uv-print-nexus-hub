@@ -58,21 +58,21 @@ export default function ComingSoon() {
           </h1>
           
           <div className="text-xl md:text-2xl mb-8 animate-slide-up">
-            🚀 Our new 10-minute local delivery system is launching shortly in Dehradun.
+            🚀 Our new same-day delivery system is launching shortly in Dehradun.
           </div>
           
           <div className="bg-white/10 backdrop-blur-sm p-8 rounded-lg mb-8 animate-fade-in">
             <h2 className="text-2xl font-semibold mb-4">
-              Express Local Delivery
+              Express Same-Day Delivery
             </h2>
             <p className="text-lg mb-6">
-              We're revolutionizing the printing industry with our ultra-fast local delivery system. Get your urgent print materials delivered within 10 minutes anywhere in Dehradun city limits.
+              We're revolutionizing the printing industry with our ultra-fast same-day delivery system. Get your urgent print materials delivered the same day anywhere in Dehradun city limits.
             </p>
             
             <div className="grid gap-4 md:grid-cols-3 mb-8">
               {[
                 {
-                  title: "10-Minute Delivery",
+                  title: "Same-Day Delivery",
                   description: "For urgent print requirements"
                 },
                 {

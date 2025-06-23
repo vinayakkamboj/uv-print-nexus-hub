@@ -6,15 +6,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
 import { useToast } from "@/hooks/use-toast";
-import { Shield, Mail, Key } from "lucide-react";
+import { Shield, Mail, Key, Lock } from "lucide-react";
 
 interface AdminAuthProps {
   onAuthenticated: (email: string) => void;
 }
 
 const AdminAuth = ({ onAuthenticated }: AdminAuthProps) => {
-  const [step, setStep] = useState<'email' | 'otp'>('email');
+  const [step, setStep] = useState<'email' | 'password' | 'otp'>('email');
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [otp, setOtp] = useState('');
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
@@ -25,6 +26,9 @@ const AdminAuth = ({ onAuthenticated }: AdminAuthProps) => {
     "laxmankamboj@gmail.com", 
     "vinayakkamboj01@gmail.com"
   ];
+
+  // Unified password for all admins
+  const ADMIN_PASSWORD = "microuvprinters@1234";
 
   const handleEmailSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -38,25 +42,41 @@ const AdminAuth = ({ onAuthenticated }: AdminAuthProps) => {
       return;
     }
 
+    setStep('password');
+  };
+
+  const handlePasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (password !== ADMIN_PASSWORD) {
+      toast({
+        title: "Invalid Password",
+        description: "Please enter the correct admin password.",
+        variant: "destructive"
+      });
+      return;
+    }
+
     setLoading(true);
     
-    // Simulate OTP sending (in real implementation, this would send actual OTP)
+    // Generate OTP for demo purposes
     setTimeout(() => {
       const generatedOTP = Math.floor(100000 + Math.random() * 900000).toString();
-      console.log(`OTP for ${email}: ${generatedOTP}`);
+      console.log(`🔐 Admin OTP for ${email}: ${generatedOTP}`);
       
       // Store OTP in session storage for demo purposes
       sessionStorage.setItem('admin_otp', generatedOTP);
       sessionStorage.setItem('admin_email', email);
       
       toast({
-        title: "OTP Sent",
-        description: `A 6-digit OTP has been sent to ${email}. Check console for demo OTP.`,
+        title: "OTP Generated",
+        description: `Your 6-digit OTP is: ${generatedOTP} (Check console for demo)`,
+        duration: 10000,
       });
       
       setStep('otp');
       setLoading(false);
-    }, 1500);
+    }, 1000);
   };
 
   const handleOTPSubmit = async (e: React.FormEvent) => {
@@ -89,12 +109,24 @@ const AdminAuth = ({ onAuthenticated }: AdminAuthProps) => {
   const handleResendOTP = () => {
     const generatedOTP = Math.floor(100000 + Math.random() * 900000).toString();
     sessionStorage.setItem('admin_otp', generatedOTP);
-    console.log(`New OTP for ${email}: ${generatedOTP}`);
+    console.log(`🔐 New Admin OTP for ${email}: ${generatedOTP}`);
     
     toast({
-      title: "OTP Resent",
-      description: "A new OTP has been generated. Check console for demo OTP.",
+      title: "New OTP Generated",
+      description: `Your new 6-digit OTP is: ${generatedOTP} (Check console for demo)`,
+      duration: 10000,
     });
+  };
+
+  const goBackToEmail = () => {
+    setStep('email');
+    setPassword('');
+    setOtp('');
+  };
+
+  const goBackToPassword = () => {
+    setStep('password');
+    setOtp('');
   };
 
   return (
@@ -106,14 +138,13 @@ const AdminAuth = ({ onAuthenticated }: AdminAuthProps) => {
           </div>
           <CardTitle className="text-2xl font-bold">Admin Portal Access</CardTitle>
           <CardDescription>
-            {step === 'email' 
-              ? 'Enter your authorized email address' 
-              : 'Enter the 6-digit OTP sent to your email'
-            }
+            {step === 'email' && 'Enter your authorized email address'}
+            {step === 'password' && 'Enter the admin password'}
+            {step === 'otp' && 'Enter the 6-digit OTP'}
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {step === 'email' ? (
+          {step === 'email' && (
             <form onSubmit={handleEmailSubmit} className="space-y-4">
               <div>
                 <Label htmlFor="email">Email Address</Label>
@@ -130,11 +161,46 @@ const AdminAuth = ({ onAuthenticated }: AdminAuthProps) => {
                   />
                 </div>
               </div>
-              <Button type="submit" className="w-full" disabled={loading}>
-                {loading ? "Sending OTP..." : "Send OTP"}
+              <Button type="submit" className="w-full">
+                Continue
               </Button>
             </form>
-          ) : (
+          )}
+
+          {step === 'password' && (
+            <form onSubmit={handlePasswordSubmit} className="space-y-4">
+              <div>
+                <Label htmlFor="password">Admin Password</Label>
+                <div className="relative">
+                  <Lock className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                  <Input
+                    id="password"
+                    type="password"
+                    placeholder="Enter admin password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="pl-10"
+                    required
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Button type="submit" className="w-full" disabled={loading}>
+                  {loading ? "Generating OTP..." : "Login & Get OTP"}
+                </Button>
+                <Button 
+                  type="button" 
+                  variant="ghost" 
+                  className="w-full" 
+                  onClick={goBackToEmail}
+                >
+                  Change Email
+                </Button>
+              </div>
+            </form>
+          )}
+
+          {step === 'otp' && (
             <form onSubmit={handleOTPSubmit} className="space-y-4">
               <div>
                 <Label htmlFor="otp">Enter OTP</Label>
@@ -165,15 +231,15 @@ const AdminAuth = ({ onAuthenticated }: AdminAuthProps) => {
                   className="w-full" 
                   onClick={handleResendOTP}
                 >
-                  Resend OTP
+                  Generate New OTP
                 </Button>
                 <Button 
                   type="button" 
                   variant="ghost" 
                   className="w-full" 
-                  onClick={() => setStep('email')}
+                  onClick={goBackToPassword}
                 >
-                  Change Email
+                  Back to Password
                 </Button>
               </div>
             </form>
