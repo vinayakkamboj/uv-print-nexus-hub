@@ -1,319 +1,853 @@
-
 import { useState, useEffect } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { getUserOrders, SimpleOrderData } from "@/lib/invoice-service";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { updatePassword, reauthenticateWithCredential, EmailAuthProvider } from "firebase/auth";
+import { doc, updateDoc } from "firebase/firestore";
+import { db } from "@/lib/firebase";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Progress } from "@/components/ui/progress";
+import { formatDate, formatCurrency, isValidGSTIN } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
-import { Package, Download, Eye, Clock, CheckCircle, Truck, MapPin, CreditCard, FileText, User, Settings } from "lucide-react";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { ShoppingBag, FileText, Settings, Clock, Package, CheckCircle, Truck, CreditCard, Download, AlertCircle, Play } from "lucide-react";
+import { getUserOrders, SimpleOrderData, testDatabaseConnection } from "@/lib/invoice-service";
+import { initializeRazorpay, createRazorpayOrder, processPayment } from "@/lib/payment-service";
+import { updateOrderAfterPayment } from "@/lib/invoice-service";
+import { downloadInvoice } from "@/lib/invoice-generator";
 
-const Dashboard = () => {
-  const { user, userData } = useAuth();
+export default function Dashboard() {
+  const { userData, user, updateUserProfile } = useAuth();
+  const { toast } = useToast();
   const [orders, setOrders] = useState<SimpleOrderData[]>([]);
   const [loading, setLoading] = useState(true);
-  const { toast } = useToast();
+  const [processingPayment, setProcessingPayment] = useState(false);
+  const [dbStatus, setDbStatus] = useState<'checking' | 'connected' | 'failed'>('checking');
+  const navigate = useNavigate();
+
+  const [name, setName] = useState(userData?.name || "");
+  const [phone, setPhone] = useState(userData?.phone || "");
+  const [gstNumber, setGstNumber] = useState(userData?.gstNumber || "");
+  const [updatingProfile, setUpdatingProfile] = useState(false);
+
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [changingPassword, setChangingPassword] = useState(false);
+  const [passwordError, setPasswordError] = useState("");
 
   useEffect(() => {
-    const fetchOrders = async () => {
-      if (!user?.uid) {
+    if (userData?.name) setName(userData.name);
+    if (userData?.phone) setPhone(userData.phone);
+    if (userData?.gstNumber) setGstNumber(userData.gstNumber);
+  }, [userData]);
+
+  const fetchUserOrders = async () => {
+    const currentUserId = userData?.uid || user?.uid;
+    
+    if (!currentUserId) {
+      console.log("❌ No user ID available");
+      setLoading(false);
+      return;
+    }
+    
+    try {
+      setLoading(true);
+      console.log("🔄 Fetching orders for user:", currentUserId);
+      
+      setDbStatus('checking');
+      const dbConnected = await testDatabaseConnection();
+      
+      if (!dbConnected) {
+        setDbStatus('failed');
+        toast({
+          title: "Database Connection Failed",
+          description: "Please refresh the page and try again.",
+          variant: "destructive",
+        });
         setLoading(false);
         return;
       }
-
-      try {
-        console.log("🔄 Fetching orders for user:", user.uid);
-        const userOrders = await getUserOrders(user.uid);
-        console.log("📊 Orders fetched:", userOrders);
-        setOrders(userOrders);
-      } catch (error) {
-        console.error("❌ Error fetching orders:", error);
+      
+      setDbStatus('connected');
+      
+      const ordersData = await getUserOrders(currentUserId);
+      setOrders(ordersData);
+      
+      if (ordersData.length === 0) {
         toast({
-          title: "Error",
-          description: "Failed to load your orders",
-          variant: "destructive"
+          title: "No Orders Found",
+          description: "You haven't placed any orders yet.",
         });
-      } finally {
-        setLoadingu(false);
+      } else {
+        toast({
+          title: "Orders Loaded",
+          description: `Found ${ordersData.length} order(s)`,
+        });
       }
-    };
-
-    fetchOrders();
-  }, [user, toast]);
-
-  const getStatusBadge = (status: string) => {
-    const statusConfig = {
-      pending_payment: { color: "bg-orange-100 text-orange-800", icon: Clock },
-      received: { color: "bg-blue-100 text-blue-800", icon: Package },
-      processing: { color: "bg-purple-100 text-purple-800", icon: Package },
-      printed: { color: "bg-indigo-100 text-indigo-800", icon: FileText },
-      shipped: { color: "bg-cyan-100 text-cyan-800", icon: Truck },
-      delivered: { color: "bg-green-100 text-green-800", icon: CheckCircle }
-    };
-
-    const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.pending_payment;
-    const Icon = config.icon;
-
-    return (
-      <Badge className={config.color}>
-        <Icon className="h-3 w-3 mr-1" />
-        {status.replace('_', ' ')}
-      </Badge>
-    );
+      
+    } catch (error) {
+      console.error("❌ Error fetching orders:", error);
+      setDbStatus('failed');
+      
+      toast({
+        title: "Error Loading Orders",
+        description: "Please refresh the page and try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const getPaymentStatusBadge = (status: string) => {
-    const statusConfig = {
-      pending: { color: "bg-yellow-100 text-yellow-800" },
-      paid: { color: "bg-green-100 text-green-800" },
-      failed: { color: "bg-red-100 text-red-800" }
-    };
+  useEffect(() => {
+    const currentUserId = userData?.uid || user?.uid;
+    
+    if (currentUserId) {
+      fetchUserOrders();
+    } else {
+      const timeout = setTimeout(() => {
+        const userId = userData?.uid || user?.uid;
+        if (userId) {
+          fetchUserOrders();
+        } else {
+          setLoading(false);
+          toast({
+            title: "Authentication Required",
+            description: "Please log in to view your orders.",
+            variant: "destructive",
+          });
+        }
+      }, 1000);
+      
+      return () => clearTimeout(timeout);
+    }
+  }, [userData, user]);
 
-    const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.pending;
-
-    return (
-      <Badge className={config.color}>
-        <CreditCard className="h-3 w-3 mr-1" />
-        {status}
-      </Badge>
-    );
+  const getExecutionStatusLabel = (status: string) => {
+    switch (status) {
+      case 'order_created':
+        return 'Order Created';
+      case 'processing':
+        return 'Processing';
+      case 'quality_check':
+        return 'Quality Check';
+      case 'shipped':
+        return 'Shipped';
+      case 'delivered':
+        return 'Delivered';
+      default:
+        return 'Order Created';
+    }
   };
 
-  const getExecutionStatusBadge = (executionStatus: string) => {
-    const statusConfig = {
-      order_created: { color: "bg-blue-100 text-blue-800", label: "Order Created" },
-      processing: { color: "bg-purple-100 text-purple-800", label: "Processing" },
-      quality_check: { color: "bg-indigo-100 text-indigo-800", label: "Quality Check" },
-      shipped: { color: "bg-cyan-100 text-cyan-800", label: "Shipped" },
-      delivered: { color: "bg-green-100 text-green-800", label: "Delivered" }
-    };
-
-    const config = statusConfig[executionStatus as keyof typeof statusConfig] || statusConfig.order_created;
-
-    return (
-      <Badge className={config.color}>
-        {config.label}
-      </Badge>
-    );
+  const getExecutionStatusColor = (status: string) => {
+    switch (status) {
+      case 'order_created':
+        return 'bg-blue-100 text-blue-700';
+      case 'processing':
+        return 'bg-yellow-100 text-yellow-700';
+      case 'quality_check':
+        return 'bg-purple-100 text-purple-700';
+      case 'shipped':
+        return 'bg-indigo-100 text-indigo-700';
+      case 'delivered':
+        return 'bg-green-100 text-green-700';
+      default:
+        return 'bg-gray-100 text-gray-700';
+    }
   };
 
-  if (loading) {
-    return (
-      <div className="container mx-auto p-6">
-        <div className="animate-pulse">
-          <div className="h-8 bg-gray-200 rounded mb-6"></div>
-          <div className="space-y-4">
-            {[...Array(3)].map((_, i) => (
-              <div key={i} className="h-32 bg-gray-100 rounded"></div>
-            ))}
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const getProgressSteps = (currentStatus: string) => {
+    const steps = ['order_created', 'processing', 'quality_check', 'shipped', 'delivered'];
+    const currentIndex = steps.indexOf(currentStatus);
+    return steps.map((step, index) => ({
+      step,
+      isActive: index <= currentIndex,
+      isCompleted: index < currentIndex,
+      isCurrent: index === currentIndex
+    }));
+  };
+
+  const handleDownloadInvoice = (order: SimpleOrderData) => {
+    if (!order.id || order.paymentStatus !== 'paid') {
+      toast({
+        title: "Invoice Not Available",
+        description: "Invoice can only be downloaded for paid orders.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const invoiceData = {
+      invoiceId: order.invoiceId || `INV-${order.trackingId}-${Date.now().toString().slice(-6)}`,
+      orderId: order.id,
+      orderDate: order.timestamp?.toDate ? order.timestamp.toDate() : new Date(),
+      customerName: order.customerName,
+      customerEmail: order.customerEmail,
+      customerAddress: order.deliveryAddress,
+      products: [{
+        name: `${order.productType} Printing (${order.quantity} units)`,
+        quantity: order.quantity,
+        price: order.totalAmount
+      }],
+      totalAmount: order.totalAmount,
+      gstNumber: order.gstNumber,
+      hsnCode: order.hsnCode,
+      trackingId: order.trackingId
+    };
+
+    downloadInvoice(invoiceData);
+    
+    toast({
+      title: "Invoice Downloaded",
+      description: "Your invoice PDF has been downloaded successfully.",
+    });
+  };
+
+  const handleRetryPayment = async (order: SimpleOrderData) => {
+    if (!userData || processingPayment || !order.id) return;
+    
+    try {
+      setProcessingPayment(true);
+      
+      toast({
+        title: "Processing Payment",
+        description: "Please wait while we initialize the payment...",
+      });
+      
+      await initializeRazorpay();
+      
+      const razorpayOrderData = await createRazorpayOrder(
+        order.id,
+        order.totalAmount,
+        order.customerName,
+        order.customerEmail
+      );
+      
+      const paymentResult = await processPayment({
+        orderId: order.id,
+        razorpayOrderId: razorpayOrderData.id,
+        amount: order.totalAmount,
+        currency: 'INR',
+        customerName: order.customerName,
+        customerEmail: order.customerEmail,
+        description: `Order #${order.trackingId} - ${order.productType} (${order.quantity} qty)`,
+        userId: userData.uid,
+        productType: order.productType,
+        quantity: order.quantity,
+        deliveryAddress: order.deliveryAddress
+      });
+      
+      if (paymentResult.status === 'completed' && paymentResult.paymentId) {
+        await updateOrderAfterPayment(order.id, paymentResult.paymentId);
+        
+        toast({
+          title: "Payment Successful",
+          description: "Your payment has been successfully processed.",
+        });
+        
+        fetchUserOrders();
+      } else {
+        toast({
+          title: "Payment Failed",
+          description: "There was an issue processing your payment. Please try again.",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error("Payment retry error:", error);
+      toast({
+        title: "Payment Error",
+        description: "An unexpected error occurred. Please try again later.",
+        variant: "destructive",
+      });
+    } finally {
+      setProcessingPayment(false);
+    }
+  };
+
+  const handleUpdateProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+    
+    if (gstNumber && !isValidGSTIN(gstNumber)) {
+      toast({
+        title: "Invalid GST Number",
+        description: "Please enter a valid GST number or leave it blank.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    setUpdatingProfile(true);
+    
+    try {
+      const userRef = doc(db, "users", user.uid);
+      await updateDoc(userRef, {
+        name,
+        phone,
+        gstNumber
+      });
+      
+      if (updateUserProfile) {
+        updateUserProfile({
+          ...userData!,
+          name,
+          phone,
+          gstNumber
+        });
+      }
+      
+      toast({
+        title: "Profile Updated",
+        description: "Your profile has been successfully updated.",
+      });
+    } catch (error) {
+      console.error("Error updating profile:", error);
+      toast({
+        title: "Update Failed",
+        description: "There was a problem updating your profile. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setUpdatingProfile(false);
+    }
+  };
+
+  const handleChangePassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+    
+    setPasswordError("");
+    
+    if (newPassword !== confirmPassword) {
+      setPasswordError("New password and confirmation do not match.");
+      toast({
+        title: "Password Mismatch",
+        description: "New password and confirmation do not match.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    if (newPassword.length < 6) {
+      setPasswordError("Password must be at least 6 characters long.");
+      toast({
+        title: "Password Too Short",
+        description: "Password must be at least 6 characters long.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    setChangingPassword(true);
+    
+    try {
+      const credential = EmailAuthProvider.credential(
+        user.email || "",
+        currentPassword
+      );
+      
+      await reauthenticateWithCredential(user, credential);
+      await updatePassword(user, newPassword);
+      
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      
+      toast({
+        title: "Password Changed",
+        description: "Your password has been successfully changed.",
+      });
+    } catch (error: any) {
+      console.error("Error changing password:", error);
+      
+      let errorMessage = "There was a problem changing your password.";
+      
+      if (error.code === 'auth/wrong-password') {
+        errorMessage = "Current password is incorrect.";
+        setPasswordError("Current password is incorrect.");
+      } else if (error.code === 'auth/too-many-requests') {
+        errorMessage = "Too many attempts. Please try again later.";
+        setPasswordError("Too many attempts. Please try again later.");
+      } else {
+        setPasswordError(error.message || "Unknown error occurred.");
+      }
+      
+      toast({
+        title: "Password Change Failed",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    } finally {
+      setChangingPassword(false);
+    }
+  };
+
+  const getPendingOrders = () => {
+    return orders.filter(order => order.paymentStatus === "pending");
+  };
+
+  const getExecutedOrders = () => {
+    return orders.filter(order => order.paymentStatus === "paid");
+  };
+
+  const getCompletedOrders = () => {
+    return orders.filter(order => order.executionStatus === "delivered");
+  };
 
   return (
-    <div className="container mx-auto p-6">
-      {/* Header with User Info */}
-      <div className="mb-8 flex flex-col md:flex-row md:items-center md:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Your Dashboard</h1>
-          <p className="text-gray-600 mt-2">Welcome back, {userData?.name || user?.email}</p>
-        </div>
-        <div className="flex gap-3 mt-4 md:mt-0">
-          <Button variant="outline" asChild>
-            <a href="/profile" className="flex items-center gap-2">
-              <User className="h-4 w-4" />
-              Update Profile
-            </a>
-          </Button>
-          <Button asChild>
-            <a href="/order" className="flex items-center gap-2">
-              <Package className="h-4 w-4" />
-              Create New Order
-            </a>
-          </Button>
+    <div className="container-custom py-12">
+      <h1 className="text-3xl font-bold mb-2">Dashboard</h1>
+      <p className="text-gray-600 mb-8">Welcome back, {userData?.name || user?.displayName || "User"}</p>
+
+      {/* Database Status Indicator */}
+      <div className="mb-6">
+        <div className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${
+          dbStatus === 'connected' ? 'bg-green-100 text-green-700' : 
+          dbStatus === 'failed' ? 'bg-red-100 text-red-700' : 
+          'bg-yellow-100 text-yellow-700'
+        }`}>
+          <div className={`w-2 h-2 rounded-full mr-2 ${
+            dbStatus === 'connected' ? 'bg-green-500' : 
+            dbStatus === 'failed' ? 'bg-red-500' : 
+            'bg-yellow-500 animate-pulse'
+          }`}></div>
+          Database: {dbStatus === 'connected' ? 'Connected' : dbStatus === 'failed' ? 'Connection Failed' : 'Checking...'}
         </div>
       </div>
 
-      {/* Order Journey Flowchart */}
-      <Card className="mb-8">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Package className="h-5 w-5" />
-            Order Journey
-          </CardTitle>
-          <CardDescription>Track your order through our printing process</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-between relative">
-            <div className="absolute top-8 left-0 right-0 h-0.5 bg-gray-200 -z-10"></div>
-            
-            <div className="flex flex-col items-center">
-              <div className="w-16 h-16 rounded-full bg-blue-100 flex items-center justify-center mb-3">
-                <Package className="h-6 w-6 text-blue-600" />
-              </div>
-              <p className="text-sm font-medium text-center">Order<br />Received</p>
-            </div>
-            
-            <div className="flex flex-col items-center">
-              <div className="w-16 h-16 rounded-full bg-purple-100 flex items-center justify-center mb-3">
-                <FileText className="h-6 w-6 text-purple-600" />
-              </div>
-              <p className="text-sm font-medium text-center">Design &<br />Processing</p>
-            </div>
-            
-            <div className="flex flex-col items-center">
-              <div className="w-16 h-16 rounded-full bg-indigo-100 flex items-center justify-center mb-3">
-                <CheckCircle className="h-6 w-6 text-indigo-600" />
-              </div>
-              <p className="text-sm font-medium text-center">Quality<br />Check</p>
-            </div>
-            
-            <div className="flex flex-col items-center">
-              <div className="w-16 h-16 rounded-full bg-cyan-100 flex items-center justify-center mb-3">
-                <Truck className="h-6 w-6 text-cyan-600" />
-              </div>
-              <p className="text-sm font-medium text-center">Shipped</p>
-            </div>
-            
-            <div className="flex flex-col items-center">
-              <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mb-3">
-                <MapPin className="h-6 w-6 text-green-600" />
-              </div>
-              <p className="text-sm font-medium text-center">Delivered</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Orders List */}
-      {orders.length === 0 ? (
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         <Card>
-          <CardContent className="p-12 text-center">
-            <Package className="h-16 w-16 mx-auto text-gray-400 mb-4" />
-            <h3 className="text-xl font-semibold text-gray-700 mb-2">No Orders Yet</h3>
-            <p className="text-gray-500 mb-6">You haven't placed any orders yet. Start by creating your first order.</p>
-            <Button asChild>
-              <a href="/order">Place Your First Order</a>
-            </Button>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-lg font-medium">Total Orders</CardTitle>
+            <CardDescription>All-time orders placed</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center">
+              <ShoppingBag className="h-8 w-8 text-primary mr-3" />
+              <span className="text-3xl font-bold">{orders.length}</span>
+            </div>
           </CardContent>
         </Card>
-      ) : (
-        <div className="space-y-6">
-          {orders.map((order) => (
-            <Card key={order.id} className="hover:shadow-lg transition-shadow">
-              <CardContent className="p-6">
-                <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
-                  <div className="flex-1 space-y-3">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <h3 className="font-semibold text-lg">{order.productType}</h3>
-                        <p className="text-sm text-gray-500">Order ID: {order.trackingId}</p>
-                        <p className="text-sm text-gray-500">Quantity: {order.quantity}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-2xl font-bold text-primary">₹{order.totalAmount?.toLocaleString()}</p>
-                        <p className="text-sm text-gray-500">
-                          {order.timestamp ? new Date(order.timestamp.seconds ? order.timestamp.seconds * 1000 : order.timestamp).toLocaleDateString() : 'N/A'}
-                        </p>
-                      </div>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-lg font-medium">Pending Payments</CardTitle>
+            <CardDescription>Orders needing payment</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center">
+              <Clock className="h-8 w-8 text-primary mr-3" />
+              <span className="text-3xl font-bold">
+                {getPendingOrders().length}
+              </span>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-lg font-medium">Executed Orders</CardTitle>
+            <CardDescription>Orders in execution phase</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center">
+              <Play className="h-8 w-8 text-primary mr-3" />
+              <span className="text-3xl font-bold">{getExecutedOrders().length}</span>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Tabs defaultValue="orders">
+        <TabsList className="mb-6">
+          <TabsTrigger value="orders" className="text-base">
+            <ShoppingBag className="h-4 w-4 mr-2" /> My Orders
+          </TabsTrigger>
+          <TabsTrigger value="pending" className="text-base">
+            <CreditCard className="h-4 w-4 mr-2" /> Pending Payments
+          </TabsTrigger>
+          <TabsTrigger value="profile" className="text-base">
+            <Settings className="h-4 w-4 mr-2" /> Profile
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="orders">
+          <Card>
+            <CardHeader>
+              <div className="flex justify-between items-center">
+                <CardTitle>My Orders</CardTitle>
+                <Link to="/order">
+                  <Button>New Order</Button>
+                </Link>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {/* Order Flow Visualization */}
+              <div className="mb-8 p-6 bg-gradient-to-r from-gray-50 to-gray-100 rounded-lg border">
+                <h3 className="text-lg font-semibold mb-6 text-center">Order Journey</h3>
+                <div className="flex items-center justify-between max-w-4xl mx-auto">
+                  <div className="flex flex-col items-center text-center">
+                    <div className="w-10 h-10 bg-gray-600 rounded-full flex items-center justify-center mb-2">
+                      <CheckCircle className="h-5 w-5 text-white" />
                     </div>
-                    
-                    <div className="flex flex-wrap gap-3">
-                      {getStatusBadge(order.status)}
-                      {getPaymentStatusBadge(order.paymentStatus)}
-                      {order.paymentStatus === 'paid' && order.status !== 'pending_payment' && (
-                        getExecutionStatusBadge(order.executionStatus || 'order_created')
-                      )}
-                    </div>
+                    <span className="text-sm font-medium">Order Created</span>
+                    <span className="text-xs text-gray-500">Payment Confirmed</span>
                   </div>
                   
-                  <div className="flex gap-2">
-                    <Dialog>
-                      <DialogTrigger asChild>
-                        <Button variant="outline" size="sm">
-                          <Eye className="h-4 w-4 mr-2" />
-                          View Details
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent className="max-w-2xl">
-                        <DialogHeader>
-                          <DialogTitle>Order Details</DialogTitle>
-                          <DialogDescription>Complete information for your order</DialogDescription>
-                        </DialogHeader>
-                        <div className="space-y-4">
-                          <div className="grid grid-cols-2 gap-4">
-                            <div>
-                              <p className="font-medium">Product Type</p>
-                              <p className="text-gray-600">{order.productType}</p>
-                            </div>
-                            <div>
-                              <p className="font-medium">Quantity</p>
-                              <p className="text-gray-600">{order.quantity}</p>
-                            </div>
-                            <div>
-                              <p className="font-medium">Total Amount</p>
-                              <p className="text-gray-600">₹{order.totalAmount?.toLocaleString()}</p>
-                            </div>
-                            <div>
-                              <p className="font-medium">Tracking ID</p>
-                              <p className="text-gray-600 font-mono">{order.trackingId}</p>
-                            </div>
-                          </div>
-                          
-                          <Separator />
-                          
+                  <div className="flex-1 h-1 bg-gray-300 mx-3 rounded"></div>
+                  
+                  <div className="flex flex-col items-center text-center">
+                    <div className="w-10 h-10 bg-gray-600 rounded-full flex items-center justify-center mb-2">
+                      <Package className="h-5 w-5 text-white" />
+                    </div>
+                    <span className="text-sm font-medium">Processing</span>
+                    <span className="text-xs text-gray-500">Design & Print</span>
+                  </div>
+                  
+                  <div className="flex-1 h-1 bg-gray-300 mx-3 rounded"></div>
+                  
+                  <div className="flex flex-col items-center text-center">
+                    <div className="w-10 h-10 bg-gray-600 rounded-full flex items-center justify-center mb-2">
+                      <FileText className="h-5 w-5 text-white" />
+                    </div>
+                    <span className="text-sm font-medium">Quality Check</span>
+                    <span className="text-xs text-gray-500">Review & Pack</span>
+                  </div>
+                  
+                  <div className="flex-1 h-1 bg-gray-300 mx-3 rounded"></div>
+                  
+                  <div className="flex flex-col items-center text-center">
+                    <div className="w-10 h-10 bg-gray-600 rounded-full flex items-center justify-center mb-2">
+                      <Truck className="h-5 w-5 text-white" />
+                    </div>
+                    <span className="text-sm font-medium">Shipped</span>
+                    <span className="text-xs text-gray-500">On the way</span>
+                  </div>
+                  
+                  <div className="flex-1 h-1 bg-gray-300 mx-3 rounded"></div>
+                  
+                  <div className="flex flex-col items-center text-center">
+                    <div className="w-10 h-10 bg-gray-600 rounded-full flex items-center justify-center mb-2">
+                      <CheckCircle className="h-5 w-5 text-white" />
+                    </div>
+                    <span className="text-sm font-medium">Delivered</span>
+                    <span className="text-xs text-gray-500">Complete</span>
+                  </div>
+                </div>
+              </div>
+
+              {loading ? (
+                <div className="flex justify-center p-6">
+                  <div className="animate-spin rounded-full h-12 w-12 border-t-4 border-primary border-solid"></div>
+                </div>
+              ) : getExecutedOrders().length > 0 ? (
+                <div className="space-y-6">
+                  {getExecutedOrders().map((order) => {
+                    const progressSteps = getProgressSteps(order.executionStatus || 'order_created');
+                    return (
+                      <div key={order.id} className="border rounded-lg p-6 bg-white">
+                        {/* Order Header */}
+                        <div className="flex justify-between items-start mb-4">
                           <div>
-                            <p className="font-medium mb-2">Status Information</p>
-                            <div className="flex flex-wrap gap-2">
-                              {getStatusBadge(order.status)}
-                              {getPaymentStatusBadge(order.paymentStatus)}
-                              {order.paymentStatus === 'paid' && order.status !== 'pending_payment' && (
-                                getExecutionStatusBadge(order.executionStatus || 'order_created')
-                              )}
-                            </div>
+                            <h3 className="font-semibold text-lg">Order #{order.trackingId}</h3>
+                            <p className="text-gray-600">{order.productType} - {order.quantity} units</p>
+                            <p className="text-sm text-gray-500">
+                              {order.timestamp ? formatDate(order.timestamp.toDate ? order.timestamp.toDate() : order.timestamp) : "N/A"}
+                            </p>
                           </div>
-                          
-                          <Separator />
-                          
-                          <div>
-                            <p className="font-medium">Delivery Address</p>
-                            <p className="text-gray-600">{order.deliveryAddress}</p>
-                          </div>
-                          
-                          {order.specifications && (
-                            <div>
-                              <p className="font-medium">Specifications</p>
-                              <p className="text-gray-600">{order.specifications}</p>
-                            </div>
-                          )}
-                          
-                          <div>
-                            <p className="font-medium">File</p>
-                            <p className="text-gray-600">{order.fileName}</p>
+                          <div className="text-right">
+                            <p className="font-semibold text-lg">{formatCurrency(order.totalAmount)}</p>
+                            <Button 
+                              size="sm" 
+                              variant="outline" 
+                              onClick={() => handleDownloadInvoice(order)}
+                              className="mt-2"
+                            >
+                              <Download className="h-4 w-4 mr-2" />
+                              Invoice
+                            </Button>
                           </div>
                         </div>
-                      </DialogContent>
-                    </Dialog>
-                    
-                    {order.invoiceId && (
-                      <Button variant="outline" size="sm">
-                        <Download className="h-4 w-4 mr-2" />
-                        Invoice
-                      </Button>
-                    )}
+
+                        {/* Progress Flow */}
+                        <div className="flex items-center justify-between">
+                          {progressSteps.map((step, index) => (
+                            <div key={step.step} className="flex items-center flex-1">
+                              <div className="flex flex-col items-center">
+                                <div className={`w-8 h-8 rounded-full flex items-center justify-center mb-2 ${
+                                  step.isCompleted || step.isCurrent ? 'bg-green-500' : 'bg-gray-300'
+                                }`}>
+                                  {step.isCompleted ? (
+                                    <CheckCircle className="h-4 w-4 text-white" />
+                                  ) : step.isCurrent ? (
+                                    <div className="w-3 h-3 bg-white rounded-full"></div>
+                                  ) : (
+                                    <div className="w-3 h-3 bg-gray-500 rounded-full"></div>
+                                  )}
+                                </div>
+                                <span className={`text-xs font-medium text-center ${
+                                  step.isCompleted || step.isCurrent ? 'text-green-600' : 'text-gray-500'
+                                }`}>
+                                  {getExecutionStatusLabel(step.step)}
+                                </span>
+                              </div>
+                              
+                              {index < progressSteps.length - 1 && (
+                                <div className={`flex-1 h-1 mx-2 rounded ${
+                                  step.isCompleted ? 'bg-green-500' : 'bg-gray-300'
+                                }`}></div>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <p className="text-gray-500 mb-4">You haven't completed any orders yet.</p>
+                  <Link to="/order">
+                    <Button>Place Your First Order</Button>
+                  </Link>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="pending">
+          <Card>
+            <CardHeader>
+              <div className="flex justify-between items-center">
+                <CardTitle>Pending Payments</CardTitle>
+                <Link to="/order">
+                  <Button>New Order</Button>
+                </Link>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {loading ? (
+                <div className="flex justify-center p-6">
+                  <div className="animate-spin rounded-full h-12 w-12 border-t-4 border-primary border-solid"></div>
+                </div>
+              ) : getPendingOrders().length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b">
+                        <th className="text-left py-3 px-4 font-medium">Order ID</th>
+                        <th className="text-left py-3 px-4 font-medium">Tracking ID</th>
+                        <th className="text-left py-3 px-4 font-medium">Product</th>
+                        <th className="text-left py-3 px-4 font-medium">Quantity</th>
+                        <th className="text-left py-3 px-4 font-medium">Date</th>
+                        <th className="text-left py-3 px-4 font-medium">Amount</th>
+                        <th className="text-left py-3 px-4 font-medium">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {getPendingOrders().map((order) => (
+                        <tr key={order.id} className="border-b hover:bg-gray-50">
+                          <td className="py-3 px-4 font-mono text-xs">
+                            {order.id?.substring(0, 8) || "N/A"}
+                          </td>
+                          <td className="py-3 px-4 font-mono text-sm">
+                            {order.trackingId}
+                          </td>
+                          <td className="py-3 px-4">{order.productType}</td>
+                          <td className="py-3 px-4">{order.quantity}</td>
+                          <td className="py-3 px-4">
+                            {order.timestamp ? formatDate(order.timestamp.toDate ? order.timestamp.toDate() : order.timestamp) : "N/A"}
+                          </td>
+                          <td className="py-3 px-4">{formatCurrency(order.totalAmount)}</td>
+                          <td className="py-3 px-4">
+                            <Button 
+                              size="sm" 
+                              variant="default" 
+                              onClick={() => handleRetryPayment(order)}
+                              disabled={processingPayment}
+                              className="text-xs"
+                            >
+                              {processingPayment ? (
+                                <>
+                                  <div className="mr-2 h-3 w-3 animate-spin rounded-full border-t-2 border-white"></div>
+                                  Processing...
+                                </>
+                              ) : (
+                                <>
+                                  <CreditCard className="h-3 w-3 mr-1" />
+                                  Complete Payment
+                                </>
+                              )}
+                            </Button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <p className="text-gray-500 mb-4">You don't have any pending payments.</p>
+                  <Link to="/order">
+                    <Button>Place New Order</Button>
+                  </Link>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="profile">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <Card>
+              <CardHeader>
+                <CardTitle>Update Profile</CardTitle>
+                <CardDescription>Update your personal information</CardDescription>
+              </CardHeader>
+              <form onSubmit={handleUpdateProfile}>
+                <CardContent className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="name">Full Name</Label>
+                    <Input
+                      id="name"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      placeholder="Your full name"
+                    />
                   </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="email">Email Address</Label>
+                    <Input
+                      id="email"
+                      value={userData?.email || ''}
+                      disabled
+                      className="bg-gray-50"
+                    />
+                    <p className="text-xs text-gray-500">Email cannot be changed</p>
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="phone">Phone Number</Label>
+                    <Input
+                      id="phone"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      placeholder="Your phone number"
+                    />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="gstNumber">GST Number</Label>
+                    <Input
+                      id="gstNumber"
+                      value={gstNumber}
+                      onChange={(e) => setGstNumber(e.target.value)}
+                      placeholder="e.g., 06ABCDE1234F1Z5"
+                    />
+                  </div>
+                </CardContent>
+                <CardFooter>
+                  <Button type="submit" disabled={updatingProfile}>
+                    {updatingProfile ? (
+                      <div className="flex items-center">
+                        <div className="mr-2 h-4 w-4 animate-spin rounded-full border-t-2 border-white"></div>
+                        <span>Updating...</span>
+                      </div>
+                    ) : (
+                      "Update Profile"
+                    )}
+                  </Button>
+                </CardFooter>
+              </form>
+            </Card>
+            
+            <Card>
+              <CardHeader>
+                <CardTitle>Change Password</CardTitle>
+                <CardDescription>Update your account password</CardDescription>
+              </CardHeader>
+              <form onSubmit={handleChangePassword}>
+                <CardContent className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="currentPassword">Current Password</Label>
+                    <Input
+                      id="currentPassword"
+                      type="password"
+                      value={currentPassword}
+                      onChange={(e) => setCurrentPassword(e.target.value)}
+                      placeholder="Enter current password"
+                      required
+                    />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="newPassword">New Password</Label>
+                    <Input
+                      id="newPassword"
+                      type="password"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      placeholder="Enter new password"
+                      required
+                    />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <Label htmlFor="confirmPassword">Confirm New Password</Label>
+                    <Input
+                      id="confirmPassword"
+                      type="password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      placeholder="Confirm new password"
+                      required
+                    />
+                  </div>
+                  
+                  {passwordError && (
+                    <div className="mt-2 flex items-center text-red-600 text-sm">
+                      <AlertCircle className="h-4 w-4 mr-1" />
+                      <span>{passwordError}</span>
+                    </div>
+                  )}
+                </CardContent>
+                <CardFooter>
+                  <Button type="submit" disabled={changingPassword}>
+                    {changingPassword ? (
+                      <div className="flex items-center">
+                        <div className="mr-2 h-4 w-4 animate-spin rounded-full border-t-2 border-white"></div>
+                        <span>Changing Password...</span>
+                      </div>
+                    ) : (
+                      "Change Password"
+                    )}
+                  </Button>
+                </CardFooter>
+              </form>
+            </Card>
+            
+            <Card className="md:col-span-2">
+              <CardHeader>
+                <CardTitle>Account Actions</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-wrap gap-4">
+                  <Link to="/order">
+                    <Button>Place New Order</Button>
+                  </Link>
                 </div>
               </CardContent>
             </Card>
-          ))}
-        </div>
-      )}
+          </div>
+        </TabsContent>
+      </Tabs>
     </div>
   );
-};
-
-export default Dashboard;
+}

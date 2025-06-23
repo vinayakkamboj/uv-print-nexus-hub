@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -7,10 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { Search, Users, Eye, Mail, Phone, Building, Package, CreditCard, Calendar } from "lucide-react";
-import { collection, getDocs, doc, updateDoc, orderBy, query, where } from "firebase/firestore";
+import { Search, Users, Eye, Mail, Phone, Building } from "lucide-react";
+import { collection, getDocs, doc, updateDoc, orderBy, query } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
 interface UserData {
@@ -29,14 +27,7 @@ interface UserData {
 interface OrderData {
   id: string;
   userId?: string;
-  productType?: string;
-  quantity?: number;
   totalAmount?: number;
-  status?: string;
-  paymentStatus?: string;
-  executionStatus?: string;
-  timestamp?: any;
-  trackingId?: string;
   [key: string]: any;
 }
 
@@ -46,8 +37,6 @@ const UserManagement = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedUser, setSelectedUser] = useState<UserData | null>(null);
-  const [userOrders, setUserOrders] = useState<OrderData[]>([]);
-  const [ordersLoading, setOrdersLoading] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -115,67 +104,6 @@ const UserManagement = () => {
     setFilteredUsers(filtered);
   };
 
-  const fetchUserOrders = async (userId: string) => {
-    setOrdersLoading(true);
-    try {
-      const ordersQuery = query(
-        collection(db, "orders"),
-        where("userId", "==", userId),
-        orderBy("timestamp", "desc")
-      );
-      
-      const ordersSnapshot = await getDocs(ordersQuery);
-      const orders = ordersSnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      })) as OrderData[];
-      
-      setUserOrders(orders);
-    } catch (error) {
-      console.error("Error fetching user orders:", error);
-      toast({
-        title: "Error",
-        description: "Failed to fetch user orders",
-        variant: "destructive"
-      });
-    } finally {
-      setOrdersLoading(false);
-    }
-  };
-
-  const handleUserClick = (user: UserData) => {
-    setSelectedUser(user);
-    fetchUserOrders(user.uid);
-  };
-
-  const getStatusBadge = (status: string) => {
-    const colors = {
-      pending_payment: "bg-orange-100 text-orange-800",
-      received: "bg-blue-100 text-blue-800",
-      processing: "bg-purple-100 text-purple-800",
-      shipped: "bg-cyan-100 text-cyan-800",
-      delivered: "bg-green-100 text-green-800"
-    };
-    return (
-      <Badge className={colors[status as keyof typeof colors] || "bg-gray-100 text-gray-800"}>
-        {status?.replace('_', ' ')}
-      </Badge>
-    );
-  };
-
-  const getPaymentStatusBadge = (status: string) => {
-    const colors = {
-      pending: "bg-yellow-100 text-yellow-800",
-      paid: "bg-green-100 text-green-800",
-      failed: "bg-red-100 text-red-800"
-    };
-    return (
-      <Badge className={colors[status as keyof typeof colors] || "bg-gray-100 text-gray-800"}>
-        {status}
-      </Badge>
-    );
-  };
-
   if (loading) {
     return (
       <Card>
@@ -201,7 +129,7 @@ const UserManagement = () => {
           User Management
         </CardTitle>
         <CardDescription>
-          Manage customer accounts and view detailed user information
+          Manage customer accounts and view user statistics
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -293,114 +221,61 @@ const UserManagement = () => {
                   <TableCell>
                     <Dialog>
                       <DialogTrigger asChild>
-                        <Button variant="ghost" size="sm" onClick={() => handleUserClick(user)}>
+                        <Button variant="ghost" size="sm" onClick={() => setSelectedUser(user)}>
                           <Eye className="h-4 w-4" />
                         </Button>
                       </DialogTrigger>
-                      <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+                      <DialogContent className="max-w-2xl">
                         <DialogHeader>
-                          <DialogTitle>User Details - {selectedUser?.name}</DialogTitle>
+                          <DialogTitle>User Details</DialogTitle>
                           <DialogDescription>
-                            Complete information and order history
+                            Complete information for {selectedUser?.name}
                           </DialogDescription>
                         </DialogHeader>
                         {selectedUser && (
-                          <Tabs defaultValue="details" className="w-full">
-                            <TabsList className="grid w-full grid-cols-2">
-                              <TabsTrigger value="details">User Details</TabsTrigger>
-                              <TabsTrigger value="orders">Order History ({userOrders.length})</TabsTrigger>
-                            </TabsList>
-                            
-                            <TabsContent value="details" className="space-y-4">
-                              <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                  <Label>Full Name</Label>
-                                  <p className="font-medium">{selectedUser.name}</p>
-                                </div>
-                                <div>
-                                  <Label>Email Address</Label>
-                                  <p className="font-medium">{selectedUser.email}</p>
-                                </div>
-                                <div>
-                                  <Label>Phone Number</Label>
-                                  <p className="font-medium">{selectedUser.phone || 'Not provided'}</p>
-                                </div>
-                                <div>
-                                  <Label>GST Number</Label>
-                                  <p className="font-medium font-mono">{selectedUser.gstNumber || 'Not provided'}</p>
-                                </div>
-                                <div>
-                                  <Label>Total Orders</Label>
-                                  <p className="font-medium">{selectedUser.totalOrders || 0}</p>
-                                </div>
-                                <div>
-                                  <Label>Total Spent</Label>
-                                  <p className="font-medium">₹{(selectedUser.totalSpent || 0).toLocaleString()}</p>
-                                </div>
-                              </div>
-                              {selectedUser.address && (
-                                <div>
-                                  <Label>Address</Label>
-                                  <p className="font-medium">{selectedUser.address}</p>
-                                </div>
-                              )}
+                          <div className="space-y-4">
+                            <div className="grid grid-cols-2 gap-4">
                               <div>
-                                <Label>Account Created</Label>
-                                <p className="font-medium">
-                                  {selectedUser.createdAt ? 
-                                    new Date(selectedUser.createdAt.seconds ? selectedUser.createdAt.seconds * 1000 : selectedUser.createdAt).toLocaleString() 
-                                    : 'N/A'
-                                  }
-                                </p>
+                                <Label>Full Name</Label>
+                                <p className="font-medium">{selectedUser.name}</p>
                               </div>
-                            </TabsContent>
-                            
-                            <TabsContent value="orders">
-                              {ordersLoading ? (
-                                <div className="text-center py-8">
-                                  <div className="animate-spin rounded-full h-8 w-8 border-t-4 border-primary border-solid mx-auto mb-2"></div>
-                                  <p className="text-gray-600">Loading orders...</p>
-                                </div>
-                              ) : userOrders.length > 0 ? (
-                                <div className="space-y-4">
-                                  {userOrders.map((order) => (
-                                    <div key={order.id} className="border rounded-lg p-4">
-                                      <div className="flex items-start justify-between mb-3">
-                                        <div>
-                                          <h4 className="font-semibold">{order.productType}</h4>
-                                          <p className="text-sm text-gray-500 font-mono">ID: {order.trackingId}</p>
-                                          <p className="text-sm text-gray-500">Qty: {order.quantity}</p>
-                                        </div>
-                                        <div className="text-right">
-                                          <p className="font-bold text-lg">₹{order.totalAmount?.toLocaleString()}</p>
-                                          <p className="text-sm text-gray-500">
-                                            {order.timestamp ? 
-                                              new Date(order.timestamp.seconds ? order.timestamp.seconds * 1000 : order.timestamp).toLocaleDateString() 
-                                              : 'N/A'
-                                            }
-                                          </p>
-                                        </div>
-                                      </div>
-                                      <div className="flex flex-wrap gap-2">
-                                        {getStatusBadge(order.status || 'pending')}
-                                        {getPaymentStatusBadge(order.paymentStatus || 'pending')}
-                                        {order.executionStatus && (
-                                          <Badge className="bg-indigo-100 text-indigo-800">
-                                            {order.executionStatus.replace('_', ' ')}
-                                          </Badge>
-                                        )}
-                                      </div>
-                                    </div>
-                                  ))}
-                                </div>
-                              ) : (
-                                <div className="text-center py-8 text-gray-500">
-                                  <Package className="h-12 w-12 mx-auto mb-2 text-gray-400" />
-                                  <p>No orders found for this user</p>
-                                </div>
-                              )}
-                            </TabsContent>
-                          </Tabs>
+                              <div>
+                                <Label>Email Address</Label>
+                                <p className="font-medium">{selectedUser.email}</p>
+                              </div>
+                              <div>
+                                <Label>Phone Number</Label>
+                                <p className="font-medium">{selectedUser.phone || 'Not provided'}</p>
+                              </div>
+                              <div>
+                                <Label>GST Number</Label>
+                                <p className="font-medium font-mono">{selectedUser.gstNumber || 'Not provided'}</p>
+                              </div>
+                              <div>
+                                <Label>Total Orders</Label>
+                                <p className="font-medium">{selectedUser.totalOrders || 0}</p>
+                              </div>
+                              <div>
+                                <Label>Total Spent</Label>
+                                <p className="font-medium">₹{(selectedUser.totalSpent || 0).toLocaleString()}</p>
+                              </div>
+                            </div>
+                            {selectedUser.address && (
+                              <div>
+                                <Label>Address</Label>
+                                <p className="font-medium">{selectedUser.address}</p>
+                              </div>
+                            )}
+                            <div>
+                              <Label>Account Created</Label>
+                              <p className="font-medium">
+                                {selectedUser.createdAt ? 
+                                  new Date(selectedUser.createdAt.seconds ? selectedUser.createdAt.seconds * 1000 : selectedUser.createdAt).toLocaleString() 
+                                  : 'N/A'
+                                }
+                              </p>
+                            </div>
+                          </div>
                         )}
                       </DialogContent>
                     </Dialog>
