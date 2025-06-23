@@ -15,43 +15,58 @@ import AdminStats from "@/components/admin/AdminStats";
 import AdminUserManager from "@/components/admin/AdminUserManager";
 
 const Admin = () => {
-  const { user, userData, logout } = useAuth();
   const { toast } = useToast();
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [adminEmail, setAdminEmail] = useState<string>("");
   const [loading, setLoading] = useState(true);
-  
-  // Check if user is admin - updated with new admin emails
-  const adminEmails = [
-    "help@microuvprinters.com",
-    "vinayakkamboj@gmail.com", 
-    "laxmankamboj@gmail.com"
-  ];
-  
-  const isAdmin = user?.email && adminEmails.includes(user.email) || 
-                  userData?.email && adminEmails.includes(userData.email);
 
   useEffect(() => {
-    // Check authentication on component mount
-    const checkAuth = () => {
-      if (user && isAdmin) {
-        setIsAuthenticated(true);
-      } else {
+    // Check for valid admin session
+    const checkAdminSession = () => {
+      try {
+        const adminAuth = localStorage.getItem('adminAuth');
+        if (adminAuth) {
+          const authData = JSON.parse(adminAuth);
+          const now = Date.now();
+          
+          // Check if session is still valid (not expired)
+          if (authData.expires && now < authData.expires) {
+            setIsAuthenticated(true);
+            setAdminEmail(authData.email);
+          } else {
+            // Session expired, clear it
+            localStorage.removeItem('adminAuth');
+            setIsAuthenticated(false);
+          }
+        } else {
+          setIsAuthenticated(false);
+        }
+      } catch (error) {
+        console.error("Error checking admin session:", error);
+        localStorage.removeItem('adminAuth');
         setIsAuthenticated(false);
       }
       setLoading(false);
     };
 
-    checkAuth();
-  }, [user, isAdmin]);
+    checkAdminSession();
+  }, []);
 
   const handleAuthSuccess = () => {
-    setIsAuthenticated(true);
+    // Re-check session after successful auth
+    const adminAuth = localStorage.getItem('adminAuth');
+    if (adminAuth) {
+      const authData = JSON.parse(adminAuth);
+      setAdminEmail(authData.email);
+      setIsAuthenticated(true);
+    }
   };
 
   const handleLogout = async () => {
     try {
-      await logout();
+      localStorage.removeItem('adminAuth');
       setIsAuthenticated(false);
+      setAdminEmail("");
       toast({
         title: "Logged Out",
         description: "You have been logged out of the admin portal."
@@ -88,7 +103,7 @@ const Admin = () => {
               </div>
               <div>
                 <h1 className="text-2xl font-bold text-gray-900">Admin Portal</h1>
-                <p className="text-sm text-gray-600">Welcome, {userData?.name || user?.email}</p>
+                <p className="text-sm text-gray-600">Welcome, {adminEmail}</p>
               </div>
             </div>
             

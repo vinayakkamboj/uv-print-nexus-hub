@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { Shield, Eye, EyeOff } from "lucide-react";
+import { Shield, Mail, KeyRound } from "lucide-react";
+import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp";
 
 interface AdminAuthProps {
   onAuthSuccess: () => void;
@@ -14,10 +15,10 @@ interface AdminAuthProps {
 
 const AdminAuth = ({ onAuthSuccess }: AdminAuthProps) => {
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
+  const [otp, setOtp] = useState("");
+  const [step, setStep] = useState<"email" | "otp">("email");
   const [loading, setLoading] = useState(false);
-  const { login } = useAuth();
+  const [generatedOtp, setGeneratedOtp] = useState("");
   const { toast } = useToast();
 
   const adminEmails = [
@@ -26,7 +27,22 @@ const AdminAuth = ({ onAuthSuccess }: AdminAuthProps) => {
     "vinayakkamboj01@gmail.com"
   ];
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const generateOTP = () => {
+    return Math.floor(100000 + Math.random() * 900000).toString();
+  };
+
+  const sendOTP = async (email: string, otpCode: string) => {
+    // In a real implementation, you would send this via email service
+    // For now, we'll show it in console and toast for testing
+    console.log(`🔐 OTP for ${email}: ${otpCode}`);
+    toast({
+      title: "OTP Sent (Demo Mode)",
+      description: `Your OTP is: ${otpCode} (Check console for testing)`,
+      duration: 10000,
+    });
+  };
+
+  const handleEmailSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!adminEmails.includes(email)) {
@@ -40,7 +56,47 @@ const AdminAuth = ({ onAuthSuccess }: AdminAuthProps) => {
 
     setLoading(true);
     try {
-      await login(email, password);
+      const otpCode = generateOTP();
+      setGeneratedOtp(otpCode);
+      await sendOTP(email, otpCode);
+      setStep("otp");
+      toast({
+        title: "OTP Sent",
+        description: "Please check your email for the verification code."
+      });
+    } catch (error) {
+      console.error("Error sending OTP:", error);
+      toast({
+        title: "Error",
+        description: "Failed to send OTP. Please try again.",
+        variant: "destructive"
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleOtpSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (otp !== generatedOtp) {
+      toast({
+        title: "Invalid OTP",
+        description: "The verification code you entered is incorrect.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setLoading(true);
+    try {
+      // Store admin session
+      localStorage.setItem('adminAuth', JSON.stringify({
+        email,
+        timestamp: Date.now(),
+        expires: Date.now() + (2 * 60 * 60 * 1000) // 2 hours
+      }));
+      
       toast({
         title: "Welcome Admin",
         description: "You have successfully logged into the admin portal."
@@ -50,7 +106,7 @@ const AdminAuth = ({ onAuthSuccess }: AdminAuthProps) => {
       console.error("Admin login error:", error);
       toast({
         title: "Login Failed",
-        description: "Invalid credentials or authentication error.",
+        description: "Authentication error occurred.",
         variant: "destructive"
       });
     } finally {
@@ -67,58 +123,81 @@ const AdminAuth = ({ onAuthSuccess }: AdminAuthProps) => {
           </div>
           <CardTitle className="text-2xl">Admin Portal</CardTitle>
           <CardDescription>
-            Secure access for authorized administrators only
+            {step === "email" ? "Enter your admin email to receive OTP" : "Enter the verification code sent to your email"}
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <Label htmlFor="email">Admin Email</Label>
-              <Input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="Enter your admin email"
-                required
-              />
-            </div>
-            
-            <div>
-              <Label htmlFor="password">Password</Label>
-              <div className="relative">
-                <Input
-                  id="password"
-                  type={showPassword ? "text" : "password"}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Enter your password"
-                  required
-                />
+          {step === "email" ? (
+            <form onSubmit={handleEmailSubmit} className="space-y-4">
+              <div>
+                <Label htmlFor="email">Admin Email</Label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                  <Input
+                    id="email"
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="Enter your admin email"
+                    className="pl-10"
+                    required
+                  />
+                </div>
+              </div>
+              
+              <Button
+                type="submit"
+                className="w-full"
+                disabled={loading}
+              >
+                {loading ? "Sending OTP..." : "Send Verification Code"}
+              </Button>
+            </form>
+          ) : (
+            <form onSubmit={handleOtpSubmit} className="space-y-6">
+              <div className="space-y-2">
+                <Label htmlFor="otp">Verification Code</Label>
+                <div className="flex justify-center">
+                  <InputOTP maxLength={6} value={otp} onChange={setOtp}>
+                    <InputOTPGroup>
+                      <InputOTPSlot index={0} />
+                      <InputOTPSlot index={1} />
+                      <InputOTPSlot index={2} />
+                      <InputOTPSlot index={3} />
+                      <InputOTPSlot index={4} />
+                      <InputOTPSlot index={5} />
+                    </InputOTPGroup>
+                  </InputOTP>
+                </div>
+                <p className="text-sm text-gray-500 text-center">
+                  Enter the 6-digit code sent to {email}
+                </p>
+              </div>
+              
+              <div className="space-y-3">
+                <Button
+                  type="submit"
+                  className="w-full"
+                  disabled={loading || otp.length !== 6}
+                >
+                  {loading ? "Verifying..." : "Verify & Access Portal"}
+                </Button>
+                
                 <Button
                   type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="absolute right-2 top-1/2 -translate-y-1/2 h-6 w-6 p-0"
-                  onClick={() => setShowPassword(!showPassword)}
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => {
+                    setStep("email");
+                    setOtp("");
+                    setGeneratedOtp("");
+                  }}
                 >
-                  {showPassword ? (
-                    <EyeOff className="h-4 w-4" />
-                  ) : (
-                    <Eye className="h-4 w-4" />
-                  )}
+                  Back to Email
                 </Button>
               </div>
-            </div>
-            
-            <Button
-              type="submit"
-              className="w-full"
-              disabled={loading}
-            >
-              {loading ? "Authenticating..." : "Access Admin Portal"}
-            </Button>
-          </form>
+            </form>
+          )}
           
           <div className="mt-6 p-4 bg-amber-50 border border-amber-200 rounded-lg">
             <p className="text-sm text-amber-800">
@@ -126,6 +205,15 @@ const AdminAuth = ({ onAuthSuccess }: AdminAuthProps) => {
               Unauthorized access attempts are monitored and logged.
             </p>
           </div>
+          
+          {step === "otp" && (
+            <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+              <p className="text-xs text-blue-800">
+                <strong>Demo Mode:</strong> Check browser console or toast notification for OTP code.
+                In production, this would be sent via email.
+              </p>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

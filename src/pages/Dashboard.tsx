@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
-import { Package, Download, Eye, Clock, CheckCircle, Truck, MapPin, CreditCard, FileText } from "lucide-react";
+import { Package, Download, Eye, Clock, CheckCircle, Truck, MapPin, CreditCard, FileText, User, Settings } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
 const Dashboard = () => {
@@ -36,7 +36,7 @@ const Dashboard = () => {
           variant: "destructive"
         });
       } finally {
-        setLoading(false);
+        setLoadingu(false);
       }
     };
 
@@ -116,9 +116,26 @@ const Dashboard = () => {
 
   return (
     <div className="container mx-auto p-6">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Your Orders</h1>
-        <p className="text-gray-600 mt-2">Track and manage all your printing orders</p>
+      {/* Header with User Info */}
+      <div className="mb-8 flex flex-col md:flex-row md:items-center md:justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Your Dashboard</h1>
+          <p className="text-gray-600 mt-2">Welcome back, {userData?.name || user?.email}</p>
+        </div>
+        <div className="flex gap-3 mt-4 md:mt-0">
+          <Button variant="outline" asChild>
+            <a href="/profile" className="flex items-center gap-2">
+              <User className="h-4 w-4" />
+              Update Profile
+            </a>
+          </Button>
+          <Button asChild>
+            <a href="/order" className="flex items-center gap-2">
+              <Package className="h-4 w-4" />
+              Create New Order
+            </a>
+          </Button>
+        </div>
       </div>
 
       {/* Order Journey Flowchart */}
