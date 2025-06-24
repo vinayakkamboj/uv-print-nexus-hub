@@ -13,6 +13,7 @@ import OrderManagement from "@/components/admin/OrderManagement";
 import UserManagement from "@/components/admin/UserManagement";
 import PaymentManagement from "@/components/admin/PaymentManagement";
 import AdminStats from "@/components/admin/AdminStats";
+import { getAdminStats, AdminStats as AdminStatsType } from "@/lib/admin-service";
 
 const Admin = () => {
   const { user, userData } = useAuth();
@@ -20,6 +21,13 @@ const Admin = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [adminEmail, setAdminEmail] = useState('');
   const [loading, setLoading] = useState(true);
+  const [quickStats, setQuickStats] = useState<AdminStatsType>({
+    totalOrders: 0,
+    totalUsers: 0,
+    totalRevenue: 0,
+    pendingOrders: 0,
+    completedOrders: 0
+  });
 
   // Check if user is authorized admin
   const getAuthorizedEmails = (): string[] => {
@@ -38,6 +46,23 @@ const Admin = () => {
   useEffect(() => {
     checkAuthStatus();
   }, []);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchQuickStats();
+    }
+  }, [isAuthenticated]);
+
+  const fetchQuickStats = async () => {
+    try {
+      console.log("🔄 Fetching quick stats for header cards...");
+      const stats = await getAdminStats();
+      setQuickStats(stats);
+      console.log("✅ Quick stats loaded:", stats);
+    } catch (error) {
+      console.error("❌ Error fetching quick stats:", error);
+    }
+  };
 
   const checkAuthStatus = () => {
     const authenticated = sessionStorage.getItem('admin_authenticated');
@@ -123,7 +148,7 @@ const Admin = () => {
                 </div>
                 <div>
                   <p className="text-sm font-medium text-blue-800">Total Orders</p>
-                  <p className="text-2xl font-bold text-blue-900">--</p>
+                  <p className="text-2xl font-bold text-blue-900">{quickStats.totalOrders}</p>
                 </div>
               </div>
             </CardContent>
@@ -137,7 +162,7 @@ const Admin = () => {
                 </div>
                 <div>
                   <p className="text-sm font-medium text-green-800">Total Users</p>
-                  <p className="text-2xl font-bold text-green-900">--</p>
+                  <p className="text-2xl font-bold text-green-900">{quickStats.totalUsers}</p>
                 </div>
               </div>
             </CardContent>
@@ -151,7 +176,7 @@ const Admin = () => {
                 </div>
                 <div>
                   <p className="text-sm font-medium text-purple-800">Revenue</p>
-                  <p className="text-2xl font-bold text-purple-900">₹--</p>
+                  <p className="text-2xl font-bold text-purple-900">₹{quickStats.totalRevenue.toLocaleString()}</p>
                 </div>
               </div>
             </CardContent>

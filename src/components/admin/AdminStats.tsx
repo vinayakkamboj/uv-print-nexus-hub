@@ -1,66 +1,29 @@
+
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Package, Users, DollarSign, TrendingUp, Clock, CheckCircle, AlertCircle, XCircle } from "lucide-react";
-import { collection, getDocs, query, where } from "firebase/firestore";
-import { db } from "@/lib/firebase";
-
-interface OrderData {
-  id: string;
-  totalAmount?: number;
-  status?: string;
-  [key: string]: any;
-}
-
-interface UserData {
-  id: string;
-  [key: string]: any;
-}
+import { getAdminStats, AdminStats as AdminStatsType } from "@/lib/admin-service";
 
 const AdminStats = () => {
-  const [stats, setStats] = useState({
+  const [stats, setStats] = useState<AdminStatsType>({
     totalOrders: 0,
     totalUsers: 0,
     totalRevenue: 0,
     pendingOrders: 0,
-    completedOrders: 0,
-    failedOrders: 0
+    completedOrders: 0
   });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        // Fetch orders
-        const ordersSnapshot = await getDocs(collection(db, "orders"));
-        const orders: OrderData[] = ordersSnapshot.docs.map(doc => ({ 
-          id: doc.id, 
-          ...doc.data() 
-        }));
-        
-        // Fetch users
-        const usersSnapshot = await getDocs(collection(db, "users"));
-        const users: UserData[] = usersSnapshot.docs.map(doc => ({ 
-          id: doc.id, 
-          ...doc.data() 
-        }));
-        
-        // Calculate stats
-        const totalRevenue = orders.reduce((sum, order) => sum + (order.totalAmount || 0), 0);
-        const pendingOrders = orders.filter(order => order.status === "pending" || order.status === "pending_payment").length;
-        const completedOrders = orders.filter(order => order.status === "completed" || order.status === "shipped" || order.status === "delivered").length;
-        const failedOrders = orders.filter(order => order.status === "failed" || order.status === "cancelled").length;
-        
-        setStats({
-          totalOrders: orders.length,
-          totalUsers: users.length,
-          totalRevenue,
-          pendingOrders,
-          completedOrders,
-          failedOrders
-        });
+        console.log("🔄 Fetching admin stats...");
+        const adminStats = await getAdminStats();
+        setStats(adminStats);
+        console.log("✅ Admin stats loaded:", adminStats);
       } catch (error) {
-        console.error("Error fetching stats:", error);
+        console.error("❌ Error fetching admin stats:", error);
       } finally {
         setLoading(false);
       }
@@ -99,19 +62,13 @@ const AdminStats = () => {
       value: stats.completedOrders,
       icon: CheckCircle,
       color: "bg-green-600"
-    },
-    {
-      title: "Failed Orders",
-      value: stats.failedOrders,
-      icon: XCircle,
-      color: "bg-red-500"
     }
   ];
 
   if (loading) {
     return (
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {[...Array(6)].map((_, i) => (
+        {[...Array(5)].map((_, i) => (
           <Card key={i} className="animate-pulse">
             <CardContent className="p-6">
               <div className="h-16 bg-gray-200 rounded"></div>
