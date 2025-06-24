@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { Search, Users, Eye, Mail, Phone, Building, Package, History, User } from "lucide-react";
-import { collection, getDocs, doc, updateDoc, orderBy, query, where } from "firebase/firestore";
+import { collection, getDocs, orderBy, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { SimpleOrderData } from "@/lib/invoice-service";
 
@@ -47,39 +47,56 @@ const UserManagement = () => {
 
   const fetchUsers = async () => {
     try {
-      const usersSnapshot = await getDocs(
-        query(collection(db, "users"), orderBy("createdAt", "desc"))
-      );
+      console.log("🔄 Fetching users from database...");
       
-      const usersData = usersSnapshot.docs.map(doc => ({
-        uid: doc.id,
-        ...doc.data()
-      })) as UserData[];
-
-      // Fetch order stats for each user
+      // First, fetch all orders to get unique users
       const ordersSnapshot = await getDocs(collection(db, "orders"));
       const orders: SimpleOrderData[] = ordersSnapshot.docs.map(doc => ({ 
         id: doc.id, 
         ...doc.data() 
       })) as SimpleOrderData[];
 
-      const usersWithStats = usersData.map(user => {
-        const userOrders = orders.filter(order => order.userId === user.uid);
-        const totalSpent = userOrders.reduce((sum, order) => sum + (order.totalAmount || 0), 0);
-        
-        return {
-          ...user,
-          totalOrders: userOrders.length,
-          totalSpent
-        };
-      });
+      console.log("📊 Found orders:", orders.length);
+
+      // Group orders by user to create user profiles
+      const userMap = new Map<string, UserData>();
       
-      setUsers(usersWithStats);
+      orders.forEach(order => {
+        const userId = order.userId;
+        const userEmail = order.customerEmail;
+        const userName = order.customerName;
+        
+        if (userId && userEmail && userName) {
+          if (!userMap.has(userId)) {
+            userMap.set(userId, {
+              uid: userId,
+              name: userName,
+              email: userEmail,
+              phone: order.customerPhone || '',
+              totalOrders: 0,
+              totalSpent: 0,
+              createdAt: order.timestamp || new Date()
+            });
+          }
+          
+          const userProfile = userMap.get(userId)!;
+          userProfile.totalOrders++;
+          
+          if (order.paymentStatus === 'paid') {
+            userProfile.totalSpent += order.totalAmount || 0;
+          }
+        }
+      });
+
+      const usersData = Array.from(userMap.values());
+      console.log("👥 Processed users:", usersData.length);
+      
+      setUsers(usersData);
     } catch (error) {
-      console.error("Error fetching users:", error);
+      console.error("❌ Error fetching users:", error);
       toast({
         title: "Error",
-        description: "Failed to fetch users",
+        description: "Failed to fetch users data",
         variant: "destructive"
       });
     } finally {
@@ -90,6 +107,8 @@ const UserManagement = () => {
   const fetchUserOrders = async (userId: string) => {
     setOrdersLoading(true);
     try {
+      console.log("🔄 Fetching orders for user:", userId);
+      
       const ordersQuery = query(
         collection(db, "orders"),
         where("userId", "==", userId),
@@ -102,9 +121,10 @@ const UserManagement = () => {
         ...doc.data()
       })) as SimpleOrderData[];
       
+      console.log("📦 Found user orders:", orders.length);
       setUserOrders(orders);
     } catch (error) {
-      console.error("Error fetching user orders:", error);
+      console.error("❌ Error fetching user orders:", error);
       toast({
         title: "Error",
         description: "Failed to fetch user orders",
@@ -132,22 +152,21 @@ const UserManagement = () => {
 
   const getStatusBadge = (status: string) => {
     const statusConfig = {
-      pending: { color: "bg-yellow-100 text-yellow-800" },
       pending_payment: { color: "bg-orange-100 text-orange-800" },
       received: { color: "bg-blue-100 text-blue-800" },
       processing: { color: "bg-purple-100 text-purple-800" },
-      shipped: { color: "bg-indigo-100 text-indigo-800" },
-      delivered: { color: "bg-green-100 text-green-800" },
-      completed: { color: "bg-green-100 text-green-800" },
+      printed: { color: "bg-indigo-100 text-indigo-800" },
+      shipped: { color: "bg-green-100 text-green-800" },
+      delivered: { color: "bg-green-600 text-white" },
       cancelled: { color: "bg-red-100 text-red-800" },
       failed: { color: "bg-red-100 text-red-800" }
     };
 
-    const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.pending;
+    const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.pending_payment;
 
     return (
       <Badge className={config.color}>
-        {status}
+        {status.replace('_', ' ')}
       </Badge>
     );
   };
@@ -185,9 +204,9 @@ const UserManagement = () => {
           Manage customer accounts and view detailed user information with order history
         </CardDescription>
       </CardHeader>
-      <CardContent>
+      <CardContent className="space-y-6">
         {/* Search */}
-        <div className="flex flex-col sm:flex-row gap-4 mb-6">
+        <div className="flex flex-col sm:flex-row gap-4">
           <div className="flex-1">
             <Label htmlFor="search">Search Users</Label>
             <div className="relative">
@@ -204,18 +223,18 @@ const UserManagement = () => {
         </div>
 
         {/* Users Table */}
-        <div className="border rounded-lg">
+        <div className="border rounded-lg overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>Phone</TableHead>
-                <TableHead>GST Number</TableHead>
-                <TableHead>Orders</TableHead>
-                <TableHead>Total Spent</TableHead>
-                <TableHead>Joined</TableHead>
-                <TableHead>Actions</TableHead>
+                <TableHead className="min-w-[150px]">Name</TableHead>
+                <TableHead className="min-w-[200px]">Email</TableHead>
+                <TableHead className="min-w-[120px]">Phone</TableHead>
+                <TableHead className="min-w-[120px]">GST Number</TableHead>
+                <TableHead className="min-w-[80px]">Orders</TableHead>
+                <TableHead className="min-w-[100px]">Total Spent</TableHead>
+                <TableHead className="min-w-[100px]">Joined</TableHead>
+                <TableHead className="min-w-[80px]">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -223,25 +242,25 @@ const UserManagement = () => {
                 <TableRow key={user.uid}>
                   <TableCell>
                     <div className="flex items-center gap-2">
-                      <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center">
+                      <div className="h-8 w-8 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
                         <span className="text-sm font-medium text-blue-600">
                           {user.name?.charAt(0)?.toUpperCase()}
                         </span>
                       </div>
-                      <span className="font-medium">{user.name}</span>
+                      <span className="font-medium truncate">{user.name}</span>
                     </div>
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2">
-                      <Mail className="h-4 w-4 text-gray-400" />
-                      {user.email}
+                      <Mail className="h-4 w-4 text-gray-400 flex-shrink-0" />
+                      <span className="truncate">{user.email}</span>
                     </div>
                   </TableCell>
                   <TableCell>
                     {user.phone ? (
                       <div className="flex items-center gap-2">
-                        <Phone className="h-4 w-4 text-gray-400" />
-                        {user.phone}
+                        <Phone className="h-4 w-4 text-gray-400 flex-shrink-0" />
+                        <span className="truncate">{user.phone}</span>
                       </div>
                     ) : (
                       <span className="text-gray-400">-</span>
@@ -250,8 +269,8 @@ const UserManagement = () => {
                   <TableCell>
                     {user.gstNumber ? (
                       <div className="flex items-center gap-2">
-                        <Building className="h-4 w-4 text-gray-400" />
-                        <span className="font-mono text-sm">{user.gstNumber}</span>
+                        <Building className="h-4 w-4 text-gray-400 flex-shrink-0" />
+                        <span className="font-mono text-sm truncate">{user.gstNumber}</span>
                       </div>
                     ) : (
                       <span className="text-gray-400">-</span>
@@ -296,14 +315,14 @@ const UserManagement = () => {
                             </TabsList>
                             
                             <TabsContent value="profile" className="space-y-4">
-                              <div className="grid grid-cols-2 gap-4">
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div>
                                   <Label>Full Name</Label>
                                   <p className="font-medium">{selectedUser.name}</p>
                                 </div>  
                                 <div>
                                   <Label>Email Address</Label>
-                                  <p className="font-medium">{selectedUser.email}</p>
+                                  <p className="font-medium break-all">{selectedUser.email}</p>
                                 </div>
                                 <div>
                                   <Label>Phone Number</Label>
@@ -346,16 +365,16 @@ const UserManagement = () => {
                                 </div>
                               ) : userOrders.length > 0 ? (
                                 <div className="space-y-4">
-                                  <div className="border rounded-lg">
+                                  <div className="border rounded-lg overflow-x-auto">
                                     <Table>
                                       <TableHeader>
                                         <TableRow>
-                                          <TableHead>Order ID</TableHead>
-                                          <TableHead>Product</TableHead>
-                                          <TableHead>Amount</TableHead>
-                                          <TableHead>Status</TableHead>
-                                          <TableHead>Payment</TableHead>
-                                          <TableHead>Date</TableHead>
+                                          <TableHead className="min-w-[120px]">Order ID</TableHead>
+                                          <TableHead className="min-w-[150px]">Product</TableHead>
+                                          <TableHead className="min-w-[100px]">Amount</TableHead>
+                                          <TableHead className="min-w-[100px]">Status</TableHead>
+                                          <TableHead className="min-w-[100px]">Payment</TableHead>
+                                          <TableHead className="min-w-[100px]">Date</TableHead>
                                         </TableRow>
                                       </TableHeader>
                                       <TableBody>
@@ -366,7 +385,7 @@ const UserManagement = () => {
                                             </TableCell>
                                             <TableCell>
                                               <div>
-                                                <p className="font-medium">{order.productType}</p>
+                                                <p className="font-medium truncate">{order.productType}</p>
                                                 <p className="text-sm text-gray-500">Qty: {order.quantity}</p>
                                               </div>
                                             </TableCell>
@@ -374,7 +393,7 @@ const UserManagement = () => {
                                               ₹{order.totalAmount?.toLocaleString()}
                                             </TableCell>
                                             <TableCell>
-                                              {getStatusBadge(order.status || 'pending')}
+                                              {getStatusBadge(order.status || 'pending_payment')}
                                             </TableCell>
                                             <TableCell>
                                               <Badge variant={order.paymentStatus === 'paid' ? 'default' : 'secondary'}>
@@ -411,9 +430,10 @@ const UserManagement = () => {
           </Table>
         </div>
 
-        {filteredUsers.length === 0 && (
+        {filteredUsers.length === 0 && !loading && (
           <div className="text-center py-12 text-gray-500">
-            No users found matching your criteria.
+            <Users className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+            <p>No users found matching your criteria.</p>
           </div>
         )}
       </CardContent>

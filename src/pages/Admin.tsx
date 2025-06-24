@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { Navigate } from "react-router-dom";
@@ -6,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { Package, Users, DollarSign, TrendingUp, Shield, LogOut } from "lucide-react";
+import { Package, Users, IndianRupee, TrendingUp, Shield, LogOut } from "lucide-react";
 import AdminAuth from "@/components/admin/AdminAuth";
 import AdminUserManager from "@/components/admin/AdminUserManager";
 import OrderManagement from "@/components/admin/OrderManagement";
@@ -122,33 +121,33 @@ const Admin = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6">
+    <div className="min-h-screen bg-gray-50 p-4 lg:p-6">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
-        <div className="mb-8 flex justify-between items-center">
+        <div className="mb-6 lg:mb-8 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Admin Portal</h1>
-            <p className="text-gray-600 mt-2">
+            <h1 className="text-2xl lg:text-3xl font-bold text-gray-900">Admin Portal</h1>
+            <p className="text-gray-600 mt-2 text-sm lg:text-base">
               Welcome, {adminEmail} | Manage orders, users, and business operations
             </p>
           </div>
-          <Button variant="outline" onClick={handleLogout}>
+          <Button variant="outline" onClick={handleLogout} className="w-full sm:w-auto">
             <LogOut className="h-4 w-4 mr-2" />
             Logout
           </Button>
         </div>
 
         {/* Quick Actions */}
-        <div className="mb-8 grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="mb-6 lg:mb-8 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <Card className="bg-blue-50 border-blue-200">
             <CardContent className="p-4">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-blue-100 rounded-lg">
-                  <Package className="h-5 w-5 text-blue-600" />
+                <div className="p-2 bg-blue-100 rounded-lg flex-shrink-0">
+                  <Package className="h-4 w-4 lg:h-5 lg:w-5 text-blue-600" />
                 </div>
-                <div>
-                  <p className="text-sm font-medium text-blue-800">Total Orders</p>
-                  <p className="text-2xl font-bold text-blue-900">{quickStats.totalOrders}</p>
+                <div className="min-w-0">
+                  <p className="text-xs lg:text-sm font-medium text-blue-800 truncate">Total Orders</p>
+                  <p className="text-lg lg:text-2xl font-bold text-blue-900">{quickStats.totalOrders}</p>
                 </div>
               </div>
             </CardContent>
@@ -157,12 +156,12 @@ const Admin = () => {
           <Card className="bg-green-50 border-green-200">
             <CardContent className="p-4">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-green-100 rounded-lg">
-                  <Users className="h-5 w-5 text-green-600" />
+                <div className="p-2 bg-green-100 rounded-lg flex-shrink-0">
+                  <Users className="h-4 w-4 lg:h-5 lg:w-5 text-green-600" />
                 </div>
-                <div>
-                  <p className="text-sm font-medium text-green-800">Total Users</p>
-                  <p className="text-2xl font-bold text-green-900">{quickStats.totalUsers}</p>
+                <div className="min-w-0">
+                  <p className="text-xs lg:text-sm font-medium text-green-800 truncate">Total Users</p>
+                  <p className="text-lg lg:text-2xl font-bold text-green-900">{quickStats.totalUsers}</p>
                 </div>
               </div>
             </CardContent>
@@ -171,12 +170,12 @@ const Admin = () => {
           <Card className="bg-purple-50 border-purple-200">
             <CardContent className="p-4">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-purple-100 rounded-lg">
-                  <DollarSign className="h-5 w-5 text-purple-600" />
+                <div className="p-2 bg-purple-100 rounded-lg flex-shrink-0">
+                  <IndianRupee className="h-4 w-4 lg:h-5 lg:w-5 text-purple-600" />
                 </div>
-                <div>
-                  <p className="text-sm font-medium text-purple-800">Revenue</p>
-                  <p className="text-2xl font-bold text-purple-900">₹{quickStats.totalRevenue.toLocaleString()}</p>
+                <div className="min-w-0">
+                  <p className="text-xs lg:text-sm font-medium text-purple-800 truncate">Revenue</p>
+                  <p className="text-lg lg:text-2xl font-bold text-purple-900">₹{quickStats.totalRevenue.toLocaleString()}</p>
                 </div>
               </div>
             </CardContent>
@@ -185,12 +184,12 @@ const Admin = () => {
           <Card className="bg-orange-50 border-orange-200">
             <CardContent className="p-4">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-orange-100 rounded-lg">
-                  <Shield className="h-5 w-5 text-orange-600" />
+                <div className="p-2 bg-orange-100 rounded-lg flex-shrink-0">
+                  <Shield className="h-4 w-4 lg:h-5 lg:w-5 text-orange-600" />
                 </div>
-                <div>
-                  <p className="text-sm font-medium text-orange-800">Admin Users</p>
-                  <p className="text-2xl font-bold text-orange-900">{getAuthorizedEmails().length}</p>
+                <div className="min-w-0">
+                  <p className="text-xs lg:text-sm font-medium text-orange-800 truncate">Admin Users</p>
+                  <p className="text-lg lg:text-2xl font-bold text-orange-900">{getAuthorizedEmails().length}</p>
                 </div>
               </div>
             </CardContent>
@@ -198,50 +197,54 @@ const Admin = () => {
         </div>
 
         {/* Stats Overview */}
-        <AdminStats />
+        <div className="mb-6 lg:mb-8">
+          <AdminStats />
+        </div>
 
         {/* Main Content Tabs */}
-        <Tabs defaultValue="orders" className="mt-8">
-          <TabsList className="grid w-full grid-cols-5">
-            <TabsTrigger value="orders" className="flex items-center gap-2">
-              <Package className="h-4 w-4" />
-              Orders
-            </TabsTrigger>
-            <TabsTrigger value="users" className="flex items-center gap-2">
-              <Users className="h-4 w-4" />
-              Users
-            </TabsTrigger>
-            <TabsTrigger value="payments" className="flex items-center gap-2">
-              <DollarSign className="h-4 w-4" />
-              Payments
-            </TabsTrigger>
-            <TabsTrigger value="admins" className="flex items-center gap-2">
-              <Shield className="h-4 w-4" />
-              Admin Users
-            </TabsTrigger>
-            <TabsTrigger value="analytics" className="flex items-center gap-2">
-              <TrendingUp className="h-4 w-4" />
-              Analytics
-            </TabsTrigger>
-          </TabsList>
+        <Tabs defaultValue="orders" className="w-full">
+          <div className="overflow-x-auto">
+            <TabsList className="grid w-full grid-cols-5 min-w-[600px] lg:min-w-full">
+              <TabsTrigger value="orders" className="flex items-center gap-1 lg:gap-2 text-xs lg:text-sm">
+                <Package className="h-3 w-3 lg:h-4 lg:w-4" />
+                <span className="hidden sm:inline">Orders</span>
+              </TabsTrigger>
+              <TabsTrigger value="users" className="flex items-center gap-1 lg:gap-2 text-xs lg:text-sm">
+                <Users className="h-3 w-3 lg:h-4 lg:w-4" />
+                <span className="hidden sm:inline">Users</span>
+              </TabsTrigger>
+              <TabsTrigger value="payments" className="flex items-center gap-1 lg:gap-2 text-xs lg:text-sm">
+                <IndianRupee className="h-3 w-3 lg:h-4 lg:w-4" />
+                <span className="hidden sm:inline">Payments</span>
+              </TabsTrigger>
+              <TabsTrigger value="admins" className="flex items-center gap-1 lg:gap-2 text-xs lg:text-sm">
+                <Shield className="h-3 w-3 lg:h-4 lg:w-4" />
+                <span className="hidden sm:inline">Admin Users</span>
+              </TabsTrigger>
+              <TabsTrigger value="analytics" className="flex items-center gap-1 lg:gap-2 text-xs lg:text-sm">
+                <TrendingUp className="h-3 w-3 lg:h-4 lg:w-4" />
+                <span className="hidden sm:inline">Analytics</span>
+              </TabsTrigger>
+            </TabsList>
+          </div>
 
-          <TabsContent value="orders">
+          <TabsContent value="orders" className="mt-6">
             <OrderManagement />
           </TabsContent>
 
-          <TabsContent value="users">
+          <TabsContent value="users" className="mt-6">
             <UserManagement />
           </TabsContent>
 
-          <TabsContent value="payments">
+          <TabsContent value="payments" className="mt-6">
             <PaymentManagement />
           </TabsContent>
 
-          <TabsContent value="admins">
+          <TabsContent value="admins" className="mt-6">
             <AdminUserManager currentAdminEmail={adminEmail} />
           </TabsContent>
 
-          <TabsContent value="analytics">
+          <TabsContent value="analytics" className="mt-6">
             <Card>
               <CardHeader>
                 <CardTitle>Business Analytics</CardTitle>

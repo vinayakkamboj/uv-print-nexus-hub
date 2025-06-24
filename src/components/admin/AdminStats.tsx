@@ -2,7 +2,7 @@
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Package, Users, DollarSign, TrendingUp, Clock, CheckCircle, AlertCircle, XCircle } from "lucide-react";
+import { Package, Users, IndianRupee, TrendingUp, Clock, CheckCircle, AlertCircle, XCircle } from "lucide-react";
 import { getAdminStats, AdminStats as AdminStatsType } from "@/lib/admin-service";
 
 const AdminStats = () => {
@@ -48,7 +48,7 @@ const AdminStats = () => {
     {
       title: "Total Revenue",
       value: `₹${stats.totalRevenue.toLocaleString()}`,
-      icon: DollarSign,
+      icon: IndianRupee,
       color: "bg-purple-500"
     },
     {
@@ -67,11 +67,11 @@ const AdminStats = () => {
 
   if (loading) {
     return (
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 lg:gap-6">
         {[...Array(5)].map((_, i) => (
           <Card key={i} className="animate-pulse">
-            <CardContent className="p-6">
-              <div className="h-16 bg-gray-200 rounded"></div>
+            <CardContent className="p-4 lg:p-6">
+              <div className="h-12 lg:h-16 bg-gray-200 rounded"></div>
             </CardContent>
           </Card>
         ))}
@@ -80,17 +80,17 @@ const AdminStats = () => {
   }
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 lg:gap-6">
       {statCards.map((stat, index) => (
         <Card key={index} className="hover:shadow-md transition-shadow">
-          <CardContent className="p-6">
+          <CardContent className="p-4 lg:p-6">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-gray-600">{stat.title}</p>
-                <p className="text-2xl font-bold text-gray-900">{stat.value}</p>
+              <div className="min-w-0 flex-1">
+                <p className="text-xs lg:text-sm font-medium text-gray-600 truncate">{stat.title}</p>
+                <p className="text-lg lg:text-2xl font-bold text-gray-900 truncate">{stat.value}</p>
               </div>
-              <div className={`p-3 rounded-full ${stat.color} text-white`}>
-                <stat.icon className="h-6 w-6" />
+              <div className={`p-2 lg:p-3 rounded-full ${stat.color} text-white flex-shrink-0`}>
+                <stat.icon className="h-4 w-4 lg:h-6 lg:w-6" />
               </div>
             </div>
           </CardContent>
