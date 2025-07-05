@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -11,9 +10,10 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { Search, Edit, Eye, Package, Truck, CheckCircle, AlertCircle, XCircle, Download } from "lucide-react";
-import { collection, getDocs, doc, updateDoc, deleteDoc, orderBy, query } from "firebase/firestore";
+import { collection, getDocs, doc, deleteDoc, orderBy, query } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { SimpleOrderData } from "@/lib/invoice-service";
+import { updateOrderStatus as updateOrderStatusService } from "@/lib/admin-service";
 
 const OrderManagement = () => {
   const [orders, setOrders] = useState<SimpleOrderData[]>([]);
@@ -22,7 +22,6 @@ const OrderManagement = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [selectedOrder, setSelectedOrder] = useState<SimpleOrderData | null>(null);
-  const [editingOrder, setEditingOrder] = useState<SimpleOrderData | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -35,7 +34,7 @@ const OrderManagement = () => {
 
   const fetchOrders = async () => {
     try {
-      console.log("🔄 Fetching orders...");
+      console.log("🔄 [ORDER-MANAGEMENT] Fetching orders...");
       const ordersSnapshot = await getDocs(
         query(collection(db, "orders"), orderBy("timestamp", "desc"))
       );
@@ -44,10 +43,10 @@ const OrderManagement = () => {
         ...doc.data()
       })) as SimpleOrderData[];
       
-      console.log("✅ Orders fetched:", ordersData.length);
+      console.log("✅ [ORDER-MANAGEMENT] Orders fetched:", ordersData.length);
       setOrders(ordersData);
     } catch (error) {
-      console.error("❌ Error fetching orders:", error);
+      console.error("❌ [ORDER-MANAGEMENT] Error fetching orders:", error);
       toast({
         title: "Error",
         description: "Failed to fetch orders",
@@ -79,8 +78,22 @@ const OrderManagement = () => {
 
   const updateOrderStatus = async (orderId: string, newStatus: string, paymentStatus?: string) => {
     try {
-      console.log("🔄 Updating order status:", { orderId, newStatus, paymentStatus });
+      console.log("🔄 [ORDER-MANAGEMENT] Updating order status:", { orderId, newStatus, paymentStatus });
       
+      // Use the centralized admin service
+      const result = await updateOrderStatusService(
+        orderId, 
+        newStatus as SimpleOrderData['status'], 
+        paymentStatus as SimpleOrderData['paymentStatus']
+      );
+      
+      if (!result.success) {
+        throw new Error(result.message || "Failed to update order status");
+      }
+      
+      console.log("✅ [ORDER-MANAGEMENT] Order updated successfully via service");
+      
+      // Update local state immediately for UI responsiveness
       const updateData: any = {
         status: newStatus,
         lastUpdated: new Date()
@@ -90,11 +103,6 @@ const OrderManagement = () => {
         updateData.paymentStatus = paymentStatus;
       }
 
-      // Update in Firebase
-      await updateDoc(doc(db, "orders", orderId), updateData);
-      console.log("✅ Order updated in Firebase");
-      
-      // Update local state immediately
       setOrders(prevOrders =>
         prevOrders.map(order =>
           order.id === orderId
@@ -113,9 +121,14 @@ const OrderManagement = () => {
         description: `Order status updated to ${newStatus}${paymentStatus ? ` and payment status to ${paymentStatus}` : ''}`,
       });
       
-      console.log("✅ Order status update completed");
+      // Refresh orders from database to ensure consistency
+      setTimeout(() => {
+        console.log("🔄 [ORDER-MANAGEMENT] Refreshing orders from database...");
+        fetchOrders();
+      }, 1000);
+      
     } catch (error) {
-      console.error("❌ Error updating order:", error);
+      console.error("❌ [ORDER-MANAGEMENT] Error updating order:", error);
       toast({
         title: "Error",
         description: "Failed to update order status",
@@ -344,7 +357,7 @@ const OrderManagement = () => {
                                   <Select
                                     value={selectedOrder.status || 'pending'}
                                     onValueChange={(value) => {
-                                      console.log("🔄 Status change requested:", value);
+                                      console.log("🔄 [UI] Status change requested:", value);
                                       updateOrderStatus(selectedOrder.id!, value);
                                     }}
                                   >
@@ -367,7 +380,7 @@ const OrderManagement = () => {
                                   <Select
                                     value={selectedOrder.paymentStatus || 'pending'}
                                     onValueChange={(value) => {
-                                      console.log("🔄 Payment status change requested:", value);
+                                      console.log("🔄 [UI] Payment status change requested:", value);
                                       updateOrderStatus(selectedOrder.id!, selectedOrder.status || 'pending', value);
                                     }}
                                   >

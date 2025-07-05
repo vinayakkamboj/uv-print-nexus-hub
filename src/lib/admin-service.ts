@@ -175,8 +175,13 @@ export const updateOrderStatus = async (
   paymentStatus?: SimpleOrderData['paymentStatus']
 ): Promise<{ success: boolean; message?: string }> => {
   try {
-    console.log("🔄 Updating order status:", orderId, newStatus);
+    console.log("🔄 [ADMIN-SERVICE] Updating order status:", { orderId, newStatus, paymentStatus });
     
+    if (!orderId || !newStatus) {
+      console.error("❌ Missing required parameters:", { orderId, newStatus });
+      return { success: false, message: "Missing order ID or status" };
+    }
+
     const updateData: any = {
       status: newStatus,
       lastUpdated: Timestamp.now()
@@ -184,15 +189,33 @@ export const updateOrderStatus = async (
     
     if (paymentStatus) {
       updateData.paymentStatus = paymentStatus;
+      console.log("🔄 Also updating payment status to:", paymentStatus);
     }
 
-    await updateDoc(doc(db, "orders", orderId), updateData);
+    console.log("📝 Update data:", updateData);
     
-    console.log("✅ Order status updated successfully");
+    // Update the document in Firestore
+    const orderRef = doc(db, "orders", orderId);
+    await updateDoc(orderRef, updateData);
+    
+    console.log("✅ [ADMIN-SERVICE] Order status updated successfully in Firestore");
+    
+    // Verify the update by fetching the document
+    const updatedOrderSnapshot = await getDocs(query(collection(db, "orders"), where("__name__", "==", orderId)));
+    if (!updatedOrderSnapshot.empty) {
+      const updatedOrder = updatedOrderSnapshot.docs[0].data();
+      console.log("✅ [VERIFICATION] Updated order data:", {
+        id: orderId,
+        status: updatedOrder.status,
+        paymentStatus: updatedOrder.paymentStatus,
+        lastUpdated: updatedOrder.lastUpdated
+      });
+    }
+    
     return { success: true };
     
   } catch (error) {
-    console.error("❌ Error updating order status:", error);
+    console.error("❌ [ADMIN-SERVICE] Error updating order status:", error);
     return { 
       success: false, 
       message: error instanceof Error ? error.message : "Failed to update order status" 
