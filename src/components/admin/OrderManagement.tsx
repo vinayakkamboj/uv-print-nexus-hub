@@ -7,13 +7,20 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Search, Edit, Eye, Package, Truck, CheckCircle, AlertCircle, XCircle, Download } from "lucide-react";
+import { Search, Edit, Eye, Package, XCircle } from "lucide-react";
 import { collection, getDocs, doc, deleteDoc, orderBy, query } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { SimpleOrderData } from "@/lib/invoice-service";
 import { updateOrderStatus as updateOrderStatusService } from "@/lib/admin-service";
+import { 
+  getOrderStatusBadge, 
+  getPaymentStatusBadge, 
+  OrderStatus, 
+  PaymentStatus,
+  ORDER_STATUS_CONFIG,
+  PAYMENT_STATUS_CONFIG
+} from "@/lib/order-status-utils";
 
 const OrderManagement = () => {
   const [orders, setOrders] = useState<SimpleOrderData[]>([]);
@@ -22,6 +29,7 @@ const OrderManagement = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [selectedOrder, setSelectedOrder] = useState<SimpleOrderData | null>(null);
+  const [isUpdating, setIsUpdating] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -35,6 +43,7 @@ const OrderManagement = () => {
   const fetchOrders = async () => {
     try {
       console.log("🔄 [ORDER-MANAGEMENT] Fetching orders...");
+      setLoading(true);
       const ordersSnapshot = await getDocs(
         query(collection(db, "orders"), orderBy("timestamp", "desc"))
       );
@@ -77,7 +86,13 @@ const OrderManagement = () => {
   };
 
   const updateOrderStatus = async (orderId: string, newStatus: string, paymentStatus?: string) => {
+    if (isUpdating) {
+      console.log("🔄 Update already in progress, skipping...");
+      return;
+    }
+
     try {
+      setIsUpdating(true);
       console.log("🔄 [ORDER-MANAGEMENT] Initiating status update:", { orderId, newStatus, paymentStatus });
       
       // Show loading state
@@ -86,11 +101,11 @@ const OrderManagement = () => {
         description: "Updating order status, please wait...",
       });
       
-      // Use the centralized admin service
+      // Use the centralized admin service with proper typing
       const result = await updateOrderStatusService(
         orderId, 
-        newStatus as SimpleOrderData['status'], 
-        paymentStatus as SimpleOrderData['paymentStatus']
+        newStatus as OrderStatus, 
+        paymentStatus as PaymentStatus
       );
       
       if (!result.success) {
@@ -99,42 +114,24 @@ const OrderManagement = () => {
       
       console.log("✅ [ORDER-MANAGEMENT] Service update successful");
       
-      // Immediately update local state for instant UI feedback
-      const updateData: any = {
-        status: newStatus,
-        lastUpdated: new Date()
-      };
-      
-      if (paymentStatus) {
-        updateData.paymentStatus = paymentStatus;
-      }
-
-      setOrders(prevOrders =>
-        prevOrders.map(order =>
-          order.id === orderId
-            ? { ...order, ...updateData }
-            : order
-        )
-      );
-
-      // Update selected order if it's currently being viewed
-      if (selectedOrder && selectedOrder.id === orderId) {
-        setSelectedOrder(prev => prev ? { ...prev, ...updateData } : null);
-      }
-
-      console.log("✅ [ORDER-MANAGEMENT] Local state updated");
-
       toast({
         title: "Success",
-        description: `Order status updated to ${newStatus}${paymentStatus ? ` and payment status to ${paymentStatus}` : ''}`,
+        description: result.message || `Order status updated successfully`,
       });
       
-      // Force refresh from database after a brief delay to ensure consistency
-      setTimeout(async () => {
-        console.log("🔄 [ORDER-MANAGEMENT] Refreshing from database for consistency...");
-        await fetchOrders();
-        console.log("✅ [ORDER-MANAGEMENT] Database refresh completed");
-      }, 2000);
+      // Force refresh from database to ensure consistency
+      console.log("🔄 [ORDER-MANAGEMENT] Refreshing orders from database...");
+      await fetchOrders();
+      
+      // Update selected order if it's currently being viewed
+      if (selectedOrder && selectedOrder.id === orderId) {
+        const updatedOrder = orders.find(order => order.id === orderId);
+        if (updatedOrder) {
+          setSelectedOrder(updatedOrder);
+        }
+      }
+      
+      console.log("✅ [ORDER-MANAGEMENT] Update process completed");
       
     } catch (error) {
       console.error("❌ [ORDER-MANAGEMENT] Error updating order:", error);
@@ -144,8 +141,10 @@ const OrderManagement = () => {
         variant: "destructive"
       });
       
-      // Revert local state changes on error
+      // Refresh orders to ensure UI consistency
       await fetchOrders();
+    } finally {
+      setIsUpdating(false);
     }
   };
 
@@ -168,30 +167,6 @@ const OrderManagement = () => {
         variant: "destructive"
       });
     }
-  };
-
-  const getStatusBadge = (status: string) => {
-    const statusConfig = {
-      pending: { color: "bg-yellow-100 text-yellow-800", icon: AlertCircle },
-      pending_payment: { color: "bg-orange-100 text-orange-800", icon: AlertCircle },
-      received: { color: "bg-blue-100 text-blue-800", icon: Package },
-      processing: { color: "bg-purple-100 text-purple-800", icon: Package },
-      shipped: { color: "bg-indigo-100 text-indigo-800", icon: Truck },
-      delivered: { color: "bg-green-100 text-green-800", icon: CheckCircle },
-      completed: { color: "bg-green-100 text-green-800", icon: CheckCircle },
-      cancelled: { color: "bg-red-100 text-red-800", icon: XCircle },
-      failed: { color: "bg-red-100 text-red-800", icon: XCircle }
-    };
-
-    const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.pending;
-    const Icon = config.icon;
-
-    return (
-      <Badge className={config.color}>
-        <Icon className="h-3 w-3 mr-1" />
-        {status}
-      </Badge>
-    );
   };
 
   if (loading) {
@@ -300,12 +275,10 @@ const OrderManagement = () => {
                     ₹{order.totalAmount?.toLocaleString()}
                   </TableCell>
                   <TableCell>
-                    {getStatusBadge(order.status || 'pending')}
+                    {getOrderStatusBadge((order.status || 'pending') as OrderStatus).component}
                   </TableCell>
                   <TableCell>
-                    <Badge variant={order.paymentStatus === 'paid' ? 'default' : 'secondary'}>
-                      {order.paymentStatus || 'pending'}
-                    </Badge>
+                    {getPaymentStatusBadge((order.paymentStatus || 'pending') as PaymentStatus).component}
                   </TableCell>
                   <TableCell>
                     {order.timestamp ? new Date(order.timestamp.seconds ? order.timestamp.seconds * 1000 : order.timestamp).toLocaleDateString() : 'N/A'}
@@ -372,18 +345,17 @@ const OrderManagement = () => {
                                       console.log("🔄 [UI] Status change requested:", value);
                                       updateOrderStatus(selectedOrder.id!, value);
                                     }}
+                                    disabled={isUpdating}
                                   >
                                     <SelectTrigger>
                                       <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
-                                      <SelectItem value="pending">Pending</SelectItem>
-                                      <SelectItem value="received">Received</SelectItem>
-                                      <SelectItem value="processing">Processing</SelectItem>
-                                      <SelectItem value="shipped">Shipped</SelectItem>
-                                      <SelectItem value="delivered">Delivered</SelectItem>
-                                      <SelectItem value="completed">Completed</SelectItem>
-                                      <SelectItem value="cancelled">Cancelled</SelectItem>
+                                      {Object.entries(ORDER_STATUS_CONFIG).map(([status, config]) => (
+                                        <SelectItem key={status} value={status}>
+                                          {config.label}
+                                        </SelectItem>
+                                      ))}
                                     </SelectContent>
                                   </Select>
                                 </div>
@@ -395,19 +367,26 @@ const OrderManagement = () => {
                                       console.log("🔄 [UI] Payment status change requested:", value);
                                       updateOrderStatus(selectedOrder.id!, selectedOrder.status || 'pending', value);
                                     }}
+                                    disabled={isUpdating}
                                   >
                                     <SelectTrigger>
                                       <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
-                                      <SelectItem value="pending">Payment Pending</SelectItem>
-                                      <SelectItem value="paid">Paid</SelectItem>
-                                      <SelectItem value="failed">Payment Failed</SelectItem>
-                                      <SelectItem value="refunded">Refunded</SelectItem>
+                                      {Object.entries(PAYMENT_STATUS_CONFIG).map(([status, config]) => (
+                                        <SelectItem key={status} value={status}>
+                                          {config.label}
+                                        </SelectItem>
+                                      ))}
                                     </SelectContent>
                                   </Select>
                                 </div>
                               </div>
+                              {isUpdating && (
+                                <div className="text-center py-2">
+                                  <p className="text-sm text-gray-500">Updating order status...</p>
+                                </div>
+                              )}
                             </div>
                           )}
                         </DialogContent>

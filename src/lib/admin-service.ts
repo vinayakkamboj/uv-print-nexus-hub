@@ -1,7 +1,7 @@
-
 import { db } from './firebase';
 import { collection, getDocs, query, orderBy, where, doc, updateDoc, Timestamp, getDoc } from 'firebase/firestore';
 import { SimpleOrderData } from './invoice-service';
+import { OrderStatus, PaymentStatus } from './order-status-utils';
 
 export interface AdminStats {
   totalOrders: number;
@@ -171,8 +171,8 @@ export const getRecentOrders = async (limit: number = 10): Promise<SimpleOrderDa
 
 export const updateOrderStatus = async (
   orderId: string, 
-  newStatus: SimpleOrderData['status'], 
-  paymentStatus?: SimpleOrderData['paymentStatus']
+  newStatus: OrderStatus, 
+  paymentStatus?: PaymentStatus
 ): Promise<{ success: boolean; message?: string }> => {
   try {
     console.log("🔄 [ADMIN-SERVICE] Starting order status update:", { orderId, newStatus, paymentStatus });
@@ -205,10 +205,13 @@ export const updateOrderStatus = async (
 
     console.log("📝 Final update data:", updateData);
     
-    // Perform the update
+    // Perform the update with proper error handling
     await updateDoc(orderRef, updateData);
     
     console.log("✅ [ADMIN-SERVICE] Firestore update completed successfully");
+    
+    // Force a small delay to ensure Firestore consistency
+    await new Promise(resolve => setTimeout(resolve, 500));
     
     // Verify the update by reading the document again
     const verificationSnapshot = await getDoc(orderRef);
@@ -224,6 +227,11 @@ export const updateOrderStatus = async (
       // Double-check that the status actually changed
       if (updatedData.status === newStatus) {
         console.log("🎉 [SUCCESS] Status change confirmed in database");
+        
+        // If payment status was also updated, verify it
+        if (paymentStatus && updatedData.paymentStatus === paymentStatus) {
+          console.log("🎉 [SUCCESS] Payment status change also confirmed in database");
+        }
       } else {
         console.error("❌ [ERROR] Status change not reflected in database");
         return { success: false, message: "Status update not reflected in database" };
@@ -233,7 +241,7 @@ export const updateOrderStatus = async (
       return { success: false, message: "Could not verify update" };
     }
     
-    return { success: true };
+    return { success: true, message: `Order ${newStatus}${paymentStatus ? ` and payment ${paymentStatus}` : ''}` };
     
   } catch (error) {
     console.error("❌ [ADMIN-SERVICE] Error updating order status:", error);
