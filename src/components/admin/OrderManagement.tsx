@@ -78,7 +78,13 @@ const OrderManagement = () => {
 
   const updateOrderStatus = async (orderId: string, newStatus: string, paymentStatus?: string) => {
     try {
-      console.log("🔄 [ORDER-MANAGEMENT] Updating order status:", { orderId, newStatus, paymentStatus });
+      console.log("🔄 [ORDER-MANAGEMENT] Initiating status update:", { orderId, newStatus, paymentStatus });
+      
+      // Show loading state
+      toast({
+        title: "Updating...",
+        description: "Updating order status, please wait...",
+      });
       
       // Use the centralized admin service
       const result = await updateOrderStatusService(
@@ -91,9 +97,9 @@ const OrderManagement = () => {
         throw new Error(result.message || "Failed to update order status");
       }
       
-      console.log("✅ [ORDER-MANAGEMENT] Order updated successfully via service");
+      console.log("✅ [ORDER-MANAGEMENT] Service update successful");
       
-      // Update local state immediately for UI responsiveness
+      // Immediately update local state for instant UI feedback
       const updateData: any = {
         status: newStatus,
         lastUpdated: new Date()
@@ -116,24 +122,30 @@ const OrderManagement = () => {
         setSelectedOrder(prev => prev ? { ...prev, ...updateData } : null);
       }
 
+      console.log("✅ [ORDER-MANAGEMENT] Local state updated");
+
       toast({
         title: "Success",
         description: `Order status updated to ${newStatus}${paymentStatus ? ` and payment status to ${paymentStatus}` : ''}`,
       });
       
-      // Refresh orders from database to ensure consistency
-      setTimeout(() => {
-        console.log("🔄 [ORDER-MANAGEMENT] Refreshing orders from database...");
-        fetchOrders();
-      }, 1000);
+      // Force refresh from database after a brief delay to ensure consistency
+      setTimeout(async () => {
+        console.log("🔄 [ORDER-MANAGEMENT] Refreshing from database for consistency...");
+        await fetchOrders();
+        console.log("✅ [ORDER-MANAGEMENT] Database refresh completed");
+      }, 2000);
       
     } catch (error) {
       console.error("❌ [ORDER-MANAGEMENT] Error updating order:", error);
       toast({
-        title: "Error",
-        description: "Failed to update order status",
+        title: "Update Failed",
+        description: error instanceof Error ? error.message : "Failed to update order status",
         variant: "destructive"
       });
+      
+      // Revert local state changes on error
+      await fetchOrders();
     }
   };
 

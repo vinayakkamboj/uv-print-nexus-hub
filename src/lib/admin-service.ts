@@ -1,6 +1,6 @@
 
 import { db } from './firebase';
-import { collection, getDocs, query, orderBy, where, doc, updateDoc, Timestamp } from 'firebase/firestore';
+import { collection, getDocs, query, orderBy, where, doc, updateDoc, Timestamp, getDoc } from 'firebase/firestore';
 import { SimpleOrderData } from './invoice-service';
 
 export interface AdminStats {
@@ -175,12 +175,23 @@ export const updateOrderStatus = async (
   paymentStatus?: SimpleOrderData['paymentStatus']
 ): Promise<{ success: boolean; message?: string }> => {
   try {
-    console.log("🔄 [ADMIN-SERVICE] Updating order status:", { orderId, newStatus, paymentStatus });
+    console.log("🔄 [ADMIN-SERVICE] Starting order status update:", { orderId, newStatus, paymentStatus });
     
     if (!orderId || !newStatus) {
       console.error("❌ Missing required parameters:", { orderId, newStatus });
       return { success: false, message: "Missing order ID or status" };
     }
+
+    // First, verify the order exists
+    const orderRef = doc(db, "orders", orderId);
+    const orderSnapshot = await getDoc(orderRef);
+    
+    if (!orderSnapshot.exists()) {
+      console.error("❌ Order does not exist:", orderId);
+      return { success: false, message: "Order not found" };
+    }
+
+    console.log("✅ Order exists, current data:", orderSnapshot.data());
 
     const updateData: any = {
       status: newStatus,
@@ -189,33 +200,48 @@ export const updateOrderStatus = async (
     
     if (paymentStatus) {
       updateData.paymentStatus = paymentStatus;
-      console.log("🔄 Also updating payment status to:", paymentStatus);
+      console.log("🔄 Including payment status update:", paymentStatus);
     }
 
-    console.log("📝 Update data:", updateData);
+    console.log("📝 Final update data:", updateData);
     
-    // Update the document in Firestore
-    const orderRef = doc(db, "orders", orderId);
+    // Perform the update
     await updateDoc(orderRef, updateData);
     
-    console.log("✅ [ADMIN-SERVICE] Order status updated successfully in Firestore");
+    console.log("✅ [ADMIN-SERVICE] Firestore update completed successfully");
     
-    // Verify the update by fetching the document
-    const updatedOrderSnapshot = await getDocs(query(collection(db, "orders"), where("__name__", "==", orderId)));
-    if (!updatedOrderSnapshot.empty) {
-      const updatedOrder = updatedOrderSnapshot.docs[0].data();
-      console.log("✅ [VERIFICATION] Updated order data:", {
+    // Verify the update by reading the document again
+    const verificationSnapshot = await getDoc(orderRef);
+    if (verificationSnapshot.exists()) {
+      const updatedData = verificationSnapshot.data();
+      console.log("✅ [VERIFICATION] Updated order confirmed:", {
         id: orderId,
-        status: updatedOrder.status,
-        paymentStatus: updatedOrder.paymentStatus,
-        lastUpdated: updatedOrder.lastUpdated
+        status: updatedData.status,
+        paymentStatus: updatedData.paymentStatus,
+        lastUpdated: updatedData.lastUpdated
       });
+      
+      // Double-check that the status actually changed
+      if (updatedData.status === newStatus) {
+        console.log("🎉 [SUCCESS] Status change confirmed in database");
+      } else {
+        console.error("❌ [ERROR] Status change not reflected in database");
+        return { success: false, message: "Status update not reflected in database" };
+      }
+    } else {
+      console.error("❌ [ERROR] Could not verify update - document disappeared");
+      return { success: false, message: "Could not verify update" };
     }
     
     return { success: true };
     
   } catch (error) {
     console.error("❌ [ADMIN-SERVICE] Error updating order status:", error);
+    console.error("❌ Error details:", {
+      code: (error as any)?.code,
+      message: (error as any)?.message,
+      stack: (error as any)?.stack
+    });
     return { 
       success: false, 
       message: error instanceof Error ? error.message : "Failed to update order status" 
