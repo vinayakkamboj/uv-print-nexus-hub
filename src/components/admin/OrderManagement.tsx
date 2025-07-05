@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -34,6 +35,7 @@ const OrderManagement = () => {
 
   const fetchOrders = async () => {
     try {
+      console.log("🔄 Fetching orders...");
       const ordersSnapshot = await getDocs(
         query(collection(db, "orders"), orderBy("timestamp", "desc"))
       );
@@ -42,9 +44,10 @@ const OrderManagement = () => {
         ...doc.data()
       })) as SimpleOrderData[];
       
+      console.log("✅ Orders fetched:", ordersData.length);
       setOrders(ordersData);
     } catch (error) {
-      console.error("Error fetching orders:", error);
+      console.error("❌ Error fetching orders:", error);
       toast({
         title: "Error",
         description: "Failed to fetch orders",
@@ -76,6 +79,8 @@ const OrderManagement = () => {
 
   const updateOrderStatus = async (orderId: string, newStatus: string, paymentStatus?: string) => {
     try {
+      console.log("🔄 Updating order status:", { orderId, newStatus, paymentStatus });
+      
       const updateData: any = {
         status: newStatus,
         lastUpdated: new Date()
@@ -85,9 +90,11 @@ const OrderManagement = () => {
         updateData.paymentStatus = paymentStatus;
       }
 
+      // Update in Firebase
       await updateDoc(doc(db, "orders", orderId), updateData);
+      console.log("✅ Order updated in Firebase");
       
-      // Update local state
+      // Update local state immediately
       setOrders(prevOrders =>
         prevOrders.map(order =>
           order.id === orderId
@@ -96,12 +103,19 @@ const OrderManagement = () => {
         )
       );
 
+      // Update selected order if it's currently being viewed
+      if (selectedOrder && selectedOrder.id === orderId) {
+        setSelectedOrder(prev => prev ? { ...prev, ...updateData } : null);
+      }
+
       toast({
         title: "Success",
-        description: "Order status updated successfully"
+        description: `Order status updated to ${newStatus}${paymentStatus ? ` and payment status to ${paymentStatus}` : ''}`,
       });
+      
+      console.log("✅ Order status update completed");
     } catch (error) {
-      console.error("Error updating order:", error);
+      console.error("❌ Error updating order:", error);
       toast({
         title: "Error",
         description: "Failed to update order status",
@@ -325,37 +339,49 @@ const OrderManagement = () => {
                                 </div>
                               )}
                               <div className="flex gap-4 pt-4">
-                                <Select
-                                  value={selectedOrder.status}
-                                  onValueChange={(value) => updateOrderStatus(selectedOrder.id!, value)}
-                                >
-                                  <SelectTrigger className="w-[200px]">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="pending">Pending</SelectItem>
-                                    <SelectItem value="received">Received</SelectItem>
-                                    <SelectItem value="processing">Processing</SelectItem>
-                                    <SelectItem value="shipped">Shipped</SelectItem>
-                                    <SelectItem value="delivered">Delivered</SelectItem>
-                                    <SelectItem value="completed">Completed</SelectItem>
-                                    <SelectItem value="cancelled">Cancelled</SelectItem>
-                                  </SelectContent>
-                                </Select>
-                                <Select
-                                  value={selectedOrder.paymentStatus}
-                                  onValueChange={(value) => updateOrderStatus(selectedOrder.id!, selectedOrder.status || 'pending', value)}
-                                >
-                                  <SelectTrigger className="w-[200px]">
-                                    <SelectValue />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    <SelectItem value="pending">Payment Pending</SelectItem>
-                                    <SelectItem value="paid">Paid</SelectItem>
-                                    <SelectItem value="failed">Payment Failed</SelectItem>
-                                    <SelectItem value="refunded">Refunded</SelectItem>
-                                  </SelectContent>
-                                </Select>
+                                <div className="flex-1">
+                                  <Label>Order Status</Label>
+                                  <Select
+                                    value={selectedOrder.status || 'pending'}
+                                    onValueChange={(value) => {
+                                      console.log("🔄 Status change requested:", value);
+                                      updateOrderStatus(selectedOrder.id!, value);
+                                    }}
+                                  >
+                                    <SelectTrigger>
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="pending">Pending</SelectItem>
+                                      <SelectItem value="received">Received</SelectItem>
+                                      <SelectItem value="processing">Processing</SelectItem>
+                                      <SelectItem value="shipped">Shipped</SelectItem>
+                                      <SelectItem value="delivered">Delivered</SelectItem>
+                                      <SelectItem value="completed">Completed</SelectItem>
+                                      <SelectItem value="cancelled">Cancelled</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
+                                <div className="flex-1">
+                                  <Label>Payment Status</Label>
+                                  <Select
+                                    value={selectedOrder.paymentStatus || 'pending'}
+                                    onValueChange={(value) => {
+                                      console.log("🔄 Payment status change requested:", value);
+                                      updateOrderStatus(selectedOrder.id!, selectedOrder.status || 'pending', value);
+                                    }}
+                                  >
+                                    <SelectTrigger>
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      <SelectItem value="pending">Payment Pending</SelectItem>
+                                      <SelectItem value="paid">Paid</SelectItem>
+                                      <SelectItem value="failed">Payment Failed</SelectItem>
+                                      <SelectItem value="refunded">Refunded</SelectItem>
+                                    </SelectContent>
+                                  </Select>
+                                </div>
                               </div>
                             </div>
                           )}

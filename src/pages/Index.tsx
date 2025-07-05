@@ -1,4 +1,3 @@
-
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -24,12 +23,6 @@ export default function Index() {
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.8 }}
           >
-            <div className="flex items-center gap-2 mb-4">
-              <Badge className="bg-green-600 text-white hover:bg-green-700 flex items-center gap-1">
-                <BadgeCheck className="h-3 w-3" />
-                Govt-Verified
-              </Badge>
-            </div>
             <h1 className="text-4xl lg:text-5xl font-bold mb-4">
               30+ Years of Excellence in Printing Industry
             </h1>
