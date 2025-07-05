@@ -1,6 +1,8 @@
+
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Printer, Package, Truck, CheckCircle, Building, BookOpen, School, Clock } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { ArrowRight, Printer, Package, Truck, CheckCircle, Building, BookOpen, School, Clock, BadgeCheck } from "lucide-react";
 import printerImg from '../assets/factoryprinting.jpeg';
 import uvPrinting from '../assets/uvprinting.jpg';
 import tags from '../assets/tags.jpg';
@@ -22,6 +24,12 @@ export default function Index() {
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.8 }}
           >
+            <div className="flex items-center gap-2 mb-4">
+              <Badge className="bg-green-600 text-white hover:bg-green-700 flex items-center gap-1">
+                <BadgeCheck className="h-3 w-3" />
+                Govt-Verified
+              </Badge>
+            </div>
             <h1 className="text-4xl lg:text-5xl font-bold mb-4">
               30+ Years of Excellence in Printing Industry
             </h1>
@@ -238,6 +246,32 @@ export default function Index() {
               </motion.div>
             ))}
           </div>
+        </div>
+      </section>
+
+      {/* Government Verification Section */}
+      <section className="bg-gray-50 section-padding">
+        <div className="container-custom">
+          <motion.div
+            className="text-center bg-white p-8 rounded-2xl shadow-md"
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.6 }}
+          >
+            <div className="flex justify-center mb-4">
+              <Badge className="bg-green-600 text-white hover:bg-green-700 flex items-center gap-2 text-lg px-4 py-2">
+                <BadgeCheck className="h-5 w-5" />
+                Government Verified
+              </Badge>
+            </div>
+            <h2 className="text-3xl font-bold mb-4">Trusted by Government & Private Sectors</h2>
+            <p className="text-gray-600 max-w-3xl mx-auto text-lg">
+              We've successfully executed public sector and private contracts, ensuring compliance with procurement standards. 
+              Our commitment to quality and regulatory adherence has made us a preferred partner for government institutions 
+              and major corporations across India.
+            </p>
+          </motion.div>
         </div>
       </section>
 
